@@ -141,7 +141,10 @@ export default function ReportGenerator({
     return sum + cost;
   }, 0);
 
-  const activeFoodCost = useAutoFoodCalc ? totalAutoFoodCost : totalManualFoodCost;
+  const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+  const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+
+  const activeFoodCost = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
 
   const projectExpenses = dailyExpenses.filter(e => e.projectId === activeProject.id);
   const totalDailyExpensesCost = projectExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -417,6 +420,18 @@ export default function ReportGenerator({
           `Rs. ${cost.toLocaleString()}`
         ];
       }).filter(row => parseFloat(row[4].replace(/[^0-9.]/g, '')) > 0);
+
+      const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+      visitorFoodLogs.forEach(f => {
+        const namePart = f.notes && f.notes.startsWith('Visitor: ') ? f.notes.split(' (')[0].replace('Visitor: ', '') : 'Visitor / Guest';
+        foodRows.push([
+          `Visitor: ${namePart}`,
+          f.date,
+          `${f.mealsCount} meal(s)`,
+          `Rs. ${f.cost}`,
+          `Rs. ${(f.mealsCount * f.cost).toLocaleString()}`
+        ]);
+      });
 
       autoTable(doc, {
         head: [['Worker Name', 'Coverage Start', 'Days Accounted', 'Rate Per Day', 'Total Food Cost']],
@@ -715,14 +730,30 @@ export default function ReportGenerator({
           "Total Food Cost (Rs.)": cost
         };
       }).filter(row => row["Total Food Cost (Rs.)"] > 0);
+
+      const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+      visitorFoodLogs.forEach(f => {
+        const namePart = f.notes && f.notes.startsWith('Visitor: ') ? f.notes.split(' (')[0].replace('Visitor: ', '') : 'Visitor / Guest';
+        foodExcelRows.push({
+          "Worker Name": `Visitor: ${namePart}`,
+          "Joined Date": f.date,
+          "Days Accounted": f.mealsCount,
+          "Rate Per Day (Rs.)": f.cost,
+          "Total Food Cost (Rs.)": f.mealsCount * f.cost
+        });
+      });
+
       const wsFood = XLSX.utils.json_to_sheet(foodExcelRows);
       XLSX.utils.book_append_sheet(wb, wsFood, "Food Costs Ledger");
     } else if (pFoodLogs.length > 0) {
       const foodExcelRows = pFoodLogs.map(f => {
-        const worker = labours.find(l => l.id === f.labourId);
+        const namePart = f.labourId === 'visitor' || f.labourId.startsWith('visitor')
+          ? (f.notes && f.notes.startsWith('Visitor: ') ? f.notes.split(' (')[0].replace('Visitor: ', '') : 'Visitor / Guest')
+          : '';
+        const worker = namePart ? null : labours.find(l => l.id === f.labourId);
         return {
           "Date": f.date,
-          "Worker Name": worker ? worker.name : 'Unknown Worker',
+          "Worker Name": namePart ? `Visitor: ${namePart}` : (worker ? worker.name : 'Unknown Worker'),
           "Meals Count": f.mealsCount,
           "Cost Per Meal (Rs.)": f.cost,
           "Total Cost (Rs.)": f.mealsCount * f.cost,

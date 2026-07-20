@@ -228,7 +228,9 @@ export default function Dashboard({
       );
       return sum + cost;
     }, 0);
-    const foodCost = useAutoFoodCalc ? autoFoodCost : manualFoodCost;
+    const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+    const visitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+    const foodCost = useAutoFoodCalc ? (autoFoodCost + visitorFoodCost) : manualFoodCost;
 
     // GST Paid and Claimed
     const gstPaid = pGst.filter(g => g.type === 'paid').reduce((sum, g) => sum + g.gstAmount, 0);

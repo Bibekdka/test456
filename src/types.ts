@@ -28,7 +28,7 @@ export interface Labour {
   joinedDate?: string; // date they joined work
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home';
+export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home' | 'pending';
 
 export interface Attendance {
   id: string;
@@ -230,18 +230,16 @@ export function getAttendanceFoodDaysAndCost(
     days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
 
-  // Count the number of days the labour was marked as 'home' in their attendance record
-  const homeRecords = attendanceRecords.filter(
+  // Count the number of days the labour was marked as present or half_day in their attendance record
+  const onSiteRecordsCount = attendanceRecords.filter(
     a => a.labourId === labour.id && 
          a.projectId === projectId && 
-         a.status === 'home' && 
+         (a.status === 'present' || a.status === 'half_day') && 
          a.date >= finalStartDateStr && 
          a.date <= endDateStr
-  );
-  const homeDaysCount = homeRecords.length;
+  ).length;
 
-  // Subtract home days from total calendar days
-  const finalFoodDays = Math.max(0, days - homeDaysCount);
+  const finalFoodDays = onSiteRecordsCount;
 
   return {
     daysPresent: finalFoodDays,
@@ -303,8 +301,8 @@ export function getLabourDaysWorked(
         totalDaysWorked += 0.5;
       }
     } else {
-      // Default to present for days without attendance logs (since they joined earlier)
-      totalDaysWorked += 1;
+      // Default to 0 (pending/unmarked) for days without attendance logs
+      totalDaysWorked += 0;
     }
 
     current.setUTCDate(current.getUTCDate() + 1);

@@ -44,6 +44,8 @@ export default function FoodTracker({
   const [mealsCount, setMealsCount] = useState(1);
   const [foodDate, setFoodDate] = useState(new Date().toISOString().split('T')[0]);
   const [mealNotes, setMealNotes] = useState('Lunch');
+  const [isVisitor, setIsVisitor] = useState(false);
+  const [visitorName, setVisitorName] = useState('');
 
   if (!activeProject) {
     return (
@@ -88,7 +90,10 @@ export default function FoodTracker({
     return sum + cost;
   }, 0);
 
-  const totalFoodCost = useAutoFoodCalc ? totalAutoFoodCost : totalManualFoodCost;
+  const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+  const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+
+  const totalFoodCost = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
   const remainingBalance = totalAdvances - totalFoodCost;
   const activeLabours = labours.filter(l => l.status === 'active');
 
@@ -116,25 +121,39 @@ export default function FoodTracker({
 
   const handleAddFoodLogSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedLabourId) {
-      alert('Please select a labour.');
-      return;
-    }
     if (mealsCount <= 0) {
       alert('Meals count must be at least 1.');
       return;
     }
 
-    const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
-    if (selectedLabour) {
-      const joinDate = selectedLabour.joinedDate || activeProject.startDate;
-      const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
-        ? selectedLabour.leftDate
-        : new Date().toISOString().split('T')[0];
+    let finalLabourId = selectedLabourId;
+    let finalNotes = mealNotes.trim() || undefined;
 
-      if (foodDate < joinDate || foodDate > endDate) {
-        alert(`Error: The selected meal date (${foodDate}) falls outside this worker's served period (${joinDate} to ${endDate}). Please choose a valid date during their service.`);
+    if (isVisitor) {
+      if (!visitorName.trim()) {
+        alert('Please enter the visitor\'s name.');
         return;
+      }
+      finalLabourId = 'visitor';
+      const detail = mealNotes.trim() ? ` (${mealNotes.trim()})` : '';
+      finalNotes = `Visitor: ${visitorName.trim()}${detail}`;
+    } else {
+      if (!selectedLabourId) {
+        alert('Please select a labour.');
+        return;
+      }
+
+      const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
+      if (selectedLabour) {
+        const joinDate = selectedLabour.joinedDate || activeProject.startDate;
+        const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
+          ? selectedLabour.leftDate
+          : new Date().toISOString().split('T')[0];
+
+        if (foodDate < joinDate || foodDate > endDate) {
+          alert(`Error: The selected meal date (${foodDate}) falls outside this worker's served period (${joinDate} to ${endDate}). Please choose a valid date during their service.`);
+          return;
+        }
       }
     }
 
@@ -144,21 +163,29 @@ export default function FoodTracker({
     const newLog: FoodLog = {
       id: `fl-${Date.now()}`,
       projectId: activeProject.id,
-      labourId: selectedLabourId,
+      labourId: finalLabourId,
       date: foodDate,
       cost: costPerMeal,
       mealsCount: mealsCount,
-      notes: mealNotes.trim() || undefined
+      notes: finalNotes
     };
 
     await onAddFoodLog(newLog);
     setSelectedLabourId('');
+    setVisitorName('');
     setMealsCount(1);
     setMealNotes('Lunch');
-    alert('Labour meal logged. 100 Rs per meal deducted from hotel advance balance.');
+    alert(isVisitor ? 'Visitor meal logged. 100 Rs per meal deducted from hotel advance balance.' : 'Labour meal logged. 100 Rs per meal deducted from hotel advance balance.');
   };
 
-  const getLabourName = (id: string) => {
+  const getLabourName = (id: string, notes?: string) => {
+    if (id === 'visitor' || id.startsWith('visitor')) {
+      if (notes && notes.startsWith('Visitor: ')) {
+        const parts = notes.split(' (');
+        return parts[0];
+      }
+      return 'Visitor / Guest';
+    }
     const l = labours.find(item => item.id === id);
     return l ? l.name : 'Unknown';
   };
@@ -385,55 +412,91 @@ export default function FoodTracker({
               Log Labour Meal
             </h3>
             <form onSubmit={handleAddFoodLogSubmit} className="space-y-4">
-              {/* Select Labour */}
-              <div>
-                <label htmlFor="food-labour" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Select Labour</label>
-                <select
-                  id="food-labour"
-                  value={selectedLabourId}
-                  onChange={(e) => setSelectedLabourId(e.target.value)}
-                  className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                  required
+              {/* Type Toggle: Labour vs Visitor */}
+              <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setIsVisitor(false)}
+                  className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${!isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
                 >
-                  <option value="">-- Choose Labour --</option>
-                  {projectLabours.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name} {l.status === 'left' ? `(Left on ${l.leftDate || 'N/A'})` : '(Active)'} - Wage: ₹{l.perDayWage}
-                    </option>
-                  ))}
-                </select>
-
-                {(() => {
-                  const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
-                  if (!selectedLabour) return null;
-                  const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
-                  const joinDate = selectedLabour.joinedDate || defaultJoin;
-                  const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
-                    ? selectedLabour.leftDate
-                    : 'Present';
-                  return (
-                    <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 text-[10px] text-slate-600 space-y-1">
-                      <p className="font-semibold text-slate-700">Worker Serving Period Info:</p>
-                      <div className="flex justify-between">
-                        <span>Status:</span>
-                        <span className={`font-bold ${selectedLabour.status === 'active' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {selectedLabour.status === 'active' ? 'Active' : 'Left Work'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Joined:</span>
-                        <span className="font-mono font-bold">{joinDate}</span>
-                      </div>
-                      {selectedLabour.status === 'left' && (
-                        <div className="flex justify-between">
-                          <span>Left Project:</span>
-                          <span className="font-mono font-bold text-rose-600">{endDate}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                  Regular Worker
+                </button>
+                <button
+                  type="button"
+                  id="add-visitor-meal-btn"
+                  onClick={() => setIsVisitor(true)}
+                  className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  Visitor / Guest
+                </button>
               </div>
+
+              {!isVisitor ? (
+                /* Select Labour */
+                <div>
+                  <label htmlFor="food-labour" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Select Labour</label>
+                  <select
+                    id="food-labour"
+                    value={selectedLabourId}
+                    onChange={(e) => setSelectedLabourId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                    required
+                  >
+                    <option value="">-- Choose Labour --</option>
+                    {projectLabours.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name} {l.status === 'left' ? `(Left on ${l.leftDate || 'N/A'})` : '(Active)'} - Wage: ₹{l.perDayWage}
+                      </option>
+                    ))}
+                  </select>
+
+                  {(() => {
+                    const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
+                    if (!selectedLabour) return null;
+                    const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
+                    const joinDate = selectedLabour.joinedDate || defaultJoin;
+                    const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
+                      ? selectedLabour.leftDate
+                      : 'Present';
+                    return (
+                      <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 text-[10px] text-slate-600 space-y-1">
+                        <p className="font-semibold text-slate-700">Worker Serving Period Info:</p>
+                        <div className="flex justify-between">
+                          <span>Status:</span>
+                          <span className={`font-bold ${selectedLabour.status === 'active' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {selectedLabour.status === 'active' ? 'Active' : 'Left Work'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Joined:</span>
+                          <span className="font-mono font-bold">{joinDate}</span>
+                        </div>
+                        {selectedLabour.status === 'left' && (
+                          <div className="flex justify-between">
+                            <span>Left Project:</span>
+                            <span className="font-mono font-bold text-rose-600">{endDate}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                /* Visitor Name */
+                <div>
+                  <label htmlFor="visitor-name" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Visitor / Guest Name</label>
+                  <input
+                    type="text"
+                    id="visitor-name"
+                    value={visitorName}
+                    onChange={(e) => setVisitorName(e.target.value)}
+                    placeholder="e.g. Inspector, Client, Subcontractor"
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Visitors do not need attendance logging and are charged at ₹100 per meal.</p>
+                </div>
+              )}
 
               {/* Meals Count & Price Note */}
               <div className="grid grid-cols-2 gap-3">
@@ -543,7 +606,7 @@ export default function FoodTracker({
                         return (
                           <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50/30 text-slate-700">
                             <td className="px-4 py-3 font-mono text-slate-600">{log.date}</td>
-                            <td className="px-4 py-3 font-semibold text-slate-800">{getLabourName(log.labourId)}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-800">{getLabourName(log.labourId, log.notes)}</td>
                             <td className="px-4 py-3">
                               <span className="px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md font-mono text-xs">
                                 {log.mealsCount} {log.mealsCount === 1 ? 'Meal' : 'Meals'}

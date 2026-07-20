@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer } from '../types';
-import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil } from 'lucide-react';
+import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface AttendanceTrackerProps {
   activeProject: Project | null;
@@ -114,7 +114,7 @@ export default function AttendanceTracker({
         );
 
         updatedTracker[l.id] = {
-          status: existingAtt ? existingAtt.status : 'present', // Default to present for speed
+          status: existingAtt ? existingAtt.status : 'pending', // Default to pending so untracked days are not counted as present
           advance: existingAdv ? existingAdv.amount : 0,
           note: existingAdv ? existingAdv.description || '' : '',
           paidBy: existingAdv ? existingAdv.paidBy || '' : '',
@@ -138,6 +138,14 @@ export default function AttendanceTracker({
       </div>
     );
   }
+
+  const handleNavigateDate = (offset: number) => {
+    const current = new Date(selectedDate);
+    if (!isNaN(current.getTime())) {
+      current.setDate(current.getDate() + offset);
+      setSelectedDate(current.toISOString().split('T')[0]);
+    }
+  };
 
   const handleStatusChange = (labourId: string, status: AttendanceStatus) => {
     setTrackerState(prev => ({
@@ -174,7 +182,7 @@ export default function AttendanceTracker({
       const savedSummary: { name: string; status: AttendanceStatus; advance: number }[] = [];
 
       for (const l of activeLabours) {
-        const state = trackerState[l.id] || { status: 'present', advance: 0, note: '', paidBy: '' };
+        const state = trackerState[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' };
         savedSummary.push({
           name: l.name,
           status: state.status,
@@ -312,17 +320,32 @@ export default function AttendanceTracker({
         </div>
 
         {activeSubTab === 'tracker' && (
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider hidden sm:inline">Select Date</label>
+          <div className="flex items-center gap-2 bg-white border border-slate-200/80 p-1 rounded-xl shadow-xs">
+            <button
+              type="button"
+              onClick={() => handleNavigateDate(-1)}
+              className="p-1.5 hover:bg-slate-100 hover:text-slate-800 rounded-lg text-slate-500 cursor-pointer transition flex items-center justify-center border border-transparent hover:border-slate-200"
+              title="Previous Day"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
             <div className="relative">
               <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="border border-slate-200 bg-white rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono text-slate-700"
+                className="border border-slate-200 bg-white rounded-lg pl-9 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono text-slate-700 h-9"
               />
             </div>
+            <button
+              type="button"
+              onClick={() => handleNavigateDate(1)}
+              className="p-1.5 hover:bg-slate-100 hover:text-slate-800 rounded-lg text-slate-500 cursor-pointer transition flex items-center justify-center border border-transparent hover:border-slate-200"
+              title="Next Day"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
@@ -481,7 +504,7 @@ export default function AttendanceTracker({
                       Total: {activeLabours.length}
                     </span>
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      🟢 Present: {activeLabours.filter(l => (trackerState[l.id]?.status || 'present') === 'present').length}
+                      🟢 Present: {activeLabours.filter(l => (trackerState[l.id]?.status || 'pending') === 'present').length}
                     </span>
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                       🟡 Half-Day: {activeLabours.filter(l => (trackerState[l.id]?.status) === 'half_day').length}
@@ -491,6 +514,9 @@ export default function AttendanceTracker({
                     </span>
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
                       🏠 Went Home: {activeLabours.filter(l => (trackerState[l.id]?.status) === 'home').length}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                      ⚪ Unmarked/Pending: {activeLabours.filter(l => (trackerState[l.id]?.status || 'pending') === 'pending').length}
                     </span>
                   </div>
                 </div>
@@ -568,6 +594,23 @@ export default function AttendanceTracker({
                       <ArrowRightLeft className="w-3.5 h-3.5" />
                       Set All Home
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = { ...trackerState };
+                        activeLabours.forEach(l => {
+                          updated[l.id] = {
+                            ...(updated[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' }),
+                            status: 'pending'
+                          };
+                        });
+                        setTrackerState(updated);
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      Reset All Pending
+                    </button>
                   </div>
                 </div>
               </div>
@@ -587,7 +630,7 @@ export default function AttendanceTracker({
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
                       {activeLabours.map((l) => {
-                        const state = trackerState[l.id] || { status: 'present', advance: 0, note: '', paidBy: '' };
+                        const state = trackerState[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' };
 
                         return (
                           <tr key={l.id} className="hover:bg-slate-50/50 transition">
@@ -598,6 +641,19 @@ export default function AttendanceTracker({
                             <td className="py-3.5 px-4 font-mono text-slate-500">₹{l.perDayWage}</td>
                             <td className="py-3.5 px-4 text-center">
                               <div className="inline-flex p-1 bg-slate-100/80 rounded-xl border border-slate-200/50 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStatusChange(l.id, 'pending')}
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition ${
+                                    state.status === 'pending'
+                                      ? 'bg-slate-500 text-white shadow-sm font-bold'
+                                      : 'text-slate-500 hover:bg-white hover:text-slate-700'
+                                  }`}
+                                  title="Pending / Unmarked (No wages or food computed)"
+                                >
+                                  <HelpCircle className="w-3 h-3" />
+                                  Pending
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleStatusChange(l.id, 'present')}

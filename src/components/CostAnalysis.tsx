@@ -92,7 +92,10 @@ export default function CostAnalysis({
     return sum + cost;
   }, 0);
 
-  const totalFoodCost = useAutoFoodCalc ? totalAutoFoodCost : totalManualFoodCost;
+  const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+  const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+
+  const totalFoodCost = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
 
   // Daily Expenses and Misc
   const projectExpenses = (dailyExpenses || []).filter(e => e.projectId === activeProject.id);
@@ -165,7 +168,9 @@ export default function CostAnalysis({
 
   function remainingBalanceForHotel() {
     const totalAdv = projectHotelAdvances.reduce((sum, a) => sum + a.amount, 0);
-    const totalFood = useAutoFoodCalc ? totalAutoFoodCost : totalManualFoodCost;
+    const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+    const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+    const totalFood = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
     return totalAdv - totalFood;
   }
 
