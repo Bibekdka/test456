@@ -617,6 +617,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateGstRecord = async (rec: GstRecord) => {
+    await putItem('gst_records', rec);
+    setGstRecords(prev => prev.map(item => item.id === rec.id ? rec : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated GST record');
+    }
+  };
+
   const handleDeleteGstRecord = async (id: string) => {
     await deleteItem('gst_records', id);
     setGstRecords(prev => prev.filter(item => item.id !== id));
@@ -1274,6 +1282,7 @@ export default function App() {
               activeProject={activeProject}
               gstRecords={gstRecords}
               onAddGstRecord={handleAddGstRecord}
+              onUpdateGstRecord={handleUpdateGstRecord}
               onDeleteGstRecord={handleDeleteGstRecord}
             />
           )}

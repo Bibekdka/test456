@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, FoodLog, Payer, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, FoodLog, Payer, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
 import { 
   Users, UserPlus, Phone, IndianRupee, Calendar, Trash2, Edit, 
   UserX, UserCheck, Archive, History, Plus, Search, Utensils, 
@@ -147,11 +147,7 @@ export default function LabourManager({
       r => r.labourId === l.id && r.projectId === activeProject.id
     );
 
-    let daysWorked = 0;
-    projectAtt.forEach(att => {
-      if (att.status === 'present') daysWorked += 1;
-      else if (att.status === 'half_day') daysWorked += 0.5;
-    });
+    const daysWorked = getLabourDaysWorked(l, attendanceRecords, activeProject.id, activeProject.startDate);
 
     // 2. Base wages earned
     const baseWages = daysWorked * l.perDayWage;

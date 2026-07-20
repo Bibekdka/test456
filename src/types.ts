@@ -12,6 +12,10 @@ export interface Project {
   targetDate: string; // completion timeline
   budget: number;
   status: 'active' | 'completed' | 'on_hold';
+  labourBudget?: number;
+  materialBudget?: number;
+  foodBudget?: number;
+  expenseBudget?: number;
 }
 
 export interface Labour {
@@ -155,6 +159,14 @@ export interface DailyExpense {
   receiptImageName?: string;
 }
 
+export function parseDateUTC(dateStr: string): Date {
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  return new Date(Date.UTC(year, month, day));
+}
+
 export function getAutoFoodDaysAndCost(labour: Labour, projectStartDate?: string): { days: number; cost: number; joinDate: string; endDate: string } {
   const defaultJoin = projectStartDate || new Date().toISOString().split('T')[0];
   const joinDateStr = labour.joinedDate || defaultJoin;
@@ -162,10 +174,8 @@ export function getAutoFoodDaysAndCost(labour: Labour, projectStartDate?: string
     ? labour.leftDate 
     : new Date().toISOString().split('T')[0];
 
-  const start = new Date(joinDateStr);
-  const end = new Date(endDateStr);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
+  const start = parseDateUTC(joinDateStr);
+  const end = parseDateUTC(endDateStr);
 
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return { days: 0, cost: 0, joinDate: joinDateStr, endDate: endDateStr };
@@ -190,9 +200,19 @@ export function getAttendanceFoodDaysAndCost(
 ): { daysPresent: number; cost: number; attendanceDaysCount: number } {
   const defaultJoin = projectStartDate || new Date().toISOString().split('T')[0];
   const joinDateStr = labour.joinedDate || defaultJoin;
+
+  // Find the maximum date of logged attendance for this project
+  const projectDates = attendanceRecords
+    .filter(r => r.projectId === projectId)
+    .map(r => r.date);
+  let maxProjectDate = new Date().toISOString().split('T')[0];
+  if (projectDates.length > 0) {
+    maxProjectDate = projectDates.reduce((max, d) => d > max ? d : max, projectDates[0]);
+  }
+
   const endDateStr = labour.status === 'left' && labour.leftDate 
     ? labour.leftDate 
-    : new Date().toISOString().split('T')[0];
+    : maxProjectDate;
 
   let finalStartDateStr = joinDateStr;
   if (calculateFromDate && /^\d{4}-\d{2}-\d{2}$/.test(calculateFromDate)) {
@@ -201,15 +221,13 @@ export function getAttendanceFoodDaysAndCost(
     }
   }
 
-  const start = new Date(finalStartDateStr);
-  const end = new Date(endDateStr);
-  start.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
+  const start = parseDateUTC(finalStartDateStr);
+  const end = parseDateUTC(endDateStr);
 
   let days = 0;
-  if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+  if (!isNaN(start.getTime()) && !isNaN(end.getTime()) && start <= end) {
     const diffTime = end.getTime() - start.getTime();
-    days = diffTime < 0 ? 0 : Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
 
   // Count the number of days the labour was marked as 'home' in their attendance record
@@ -230,6 +248,69 @@ export function getAttendanceFoodDaysAndCost(
     cost: finalFoodDays * 100,
     attendanceDaysCount: finalFoodDays
   };
+}
+
+export function getLabourDaysWorked(
+  labour: Labour,
+  attendanceRecords: Attendance[],
+  projectId: string,
+  projectStartDate?: string
+): number {
+  const defaultJoin = projectStartDate || new Date().toISOString().split('T')[0];
+  const joinDateStr = labour.joinedDate || defaultJoin;
+
+  let finalStartDateStr = joinDateStr;
+  if (projectStartDate && projectStartDate > finalStartDateStr) {
+    finalStartDateStr = projectStartDate;
+  }
+
+  const projectDates = attendanceRecords
+    .filter(r => r.projectId === projectId)
+    .map(r => r.date);
+  let maxProjectDate = new Date().toISOString().split('T')[0];
+  if (projectDates.length > 0) {
+    maxProjectDate = projectDates.reduce((max, d) => d > max ? d : max, projectDates[0]);
+  }
+
+  const endDateStr = labour.status === 'left' && labour.leftDate 
+    ? labour.leftDate 
+    : maxProjectDate;
+
+  const start = parseDateUTC(finalStartDateStr);
+  const end = parseDateUTC(endDateStr);
+
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return 0;
+  }
+
+  const attMap = new Map<string, string>();
+  attendanceRecords.forEach(r => {
+    if (r.labourId === labour.id && r.projectId === projectId) {
+      attMap.set(r.date, r.status);
+    }
+  });
+
+  let totalDaysWorked = 0;
+  const current = new Date(start);
+  while (current <= end) {
+    const dateStr = current.toISOString().split('T')[0];
+    const status = attMap.get(dateStr);
+    
+    if (status !== undefined) {
+      if (status === 'present') {
+        totalDaysWorked += 1;
+      } else if (status === 'half_day') {
+        totalDaysWorked += 0.5;
+      }
+    } else {
+      // Default to present for days without attendance logs (since they joined earlier)
+      totalDaysWorked += 1;
+    }
+
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return totalDaysWorked;
 }
 
 

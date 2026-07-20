@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, GstRecord, SiteDiaryEntry, DelayWeatherLog, HotelAdvance, FoodLog, Payer, DailyExpense, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, Material, GstRecord, SiteDiaryEntry, DelayWeatherLog, HotelAdvance, FoodLog, Payer, DailyExpense, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
 import { FileDown, Download, Upload, ShieldCheck, Database, Calendar, Landmark, AlertCircle, Printer, Image, Search, Eye, Filter, CheckCircle2, X } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -79,11 +79,7 @@ export default function ReportGenerator({
   const workerDetails = labours.map(l => {
     // Attendance
     const att = attendanceRecords.filter(r => r.labourId === l.id && r.projectId === activeProject.id);
-    let daysWorked = 0;
-    att.forEach(r => {
-      if (r.status === 'present') daysWorked += 1;
-      else if (r.status === 'half_day') daysWorked += 0.5;
-    });
+    const daysWorked = getLabourDaysWorked(l, attendanceRecords, activeProject.id, activeProject.startDate);
 
     if (daysWorked > 0 && l.status === 'active') {
       activeWorkersOnSite++;
@@ -287,26 +283,83 @@ export default function ReportGenerator({
     if (projectDelays.length > 0) {
       doc.setFont("Helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("SITE DOWNTIME & WEATHER TIMELINE", 14, delaysNextY);
+      doc.text("SITE DOWNTIME & WEATHER SUMMARY", 14, delaysNextY);
 
-      const delayRows = projectDelays.map(d => [
-        d.date,
-        d.weather,
-        d.temperature ? `${d.temperature}°C` : 'N/A',
-        d.isDelay ? `Yes (${d.delayHours} hrs)` : 'No disruption',
-        d.delayReason || 'N/A',
-        d.delayNotes || 'N/A'
-      ]);
+      // Compute statistics for summary
+      const totalDays = projectDelays.length;
+      const delayEvents = projectDelays.filter(d => d.isDelay);
+      const disruptedDays = delayEvents.length;
+      const totalHours = projectDelays.reduce((sum, d) => sum + (d.delayHours || 0), 0);
 
-      autoTable(doc, {
-        head: [['Date', 'Weather', 'Temp', 'Delay occurred', 'Primary Reason', 'Resolution Notes']],
-        body: delayRows,
-        startY: delaysNextY + 4,
-        theme: 'striped',
-        headStyles: { fillColor: [245, 158, 11] },
-        styles: { fontSize: 8 },
+      // Weather distribution breakdown
+      const weatherCounts: Record<string, number> = {};
+      projectDelays.forEach(d => {
+        if (d.weather) {
+          const wFormatted = d.weather.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+          weatherCounts[wFormatted] = (weatherCounts[wFormatted] || 0) + 1;
+        }
       });
-      delaysNextY = ((doc as any).lastAutoTable?.finalY || delaysNextY) + 12;
+      const weatherBreakdown = Object.entries(weatherCounts)
+        .map(([w, count]) => `${w}: ${count}d`)
+        .join(', ');
+
+      const summaryRows = [
+        ['Total Tracked Days', `${totalDays} days`],
+        ['Disrupted Days', `${disruptedDays} days (${totalDays > 0 ? ((disruptedDays / totalDays) * 100).toFixed(0) : 0}% of total)`],
+        ['Total Downtime Duration', `${totalHours} hours`],
+        ['Weather Log Breakdown', weatherBreakdown || 'None']
+      ];
+
+      // Summary Table
+      autoTable(doc, {
+        head: [['Metric / Tracker', 'Summary Value']],
+        body: summaryRows,
+        startY: delaysNextY + 4,
+        theme: 'plain',
+        headStyles: { fillColor: [245, 158, 11], textColor: [255, 255, 255] },
+        styles: { fontSize: 8 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { cellWidth: 130 }
+        }
+      });
+
+      let currentY = (doc as any).lastAutoTable?.finalY || (delaysNextY + 25);
+
+      // Short table for actual delay incidents
+      if (delayEvents.length > 0) {
+        currentY += 8;
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("RECORDED DISRUPTION EVENTS", 14, currentY);
+
+        const delayRows = delayEvents.map(d => [
+          d.date,
+          d.weather ? d.weather.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'N/A',
+          d.temperature ? `${d.temperature}°C` : 'N/A',
+          `${d.delayHours || 0} hrs`,
+          d.delayReason || 'N/A',
+          d.delayNotes || 'N/A'
+        ]);
+
+        autoTable(doc, {
+          head: [['Date', 'Weather', 'Temp', 'Downtime', 'Disruption Reason', 'Resolution Notes']],
+          body: delayRows,
+          startY: currentY + 4,
+          theme: 'striped',
+          headStyles: { fillColor: [217, 119, 6] },
+          styles: { fontSize: 8 },
+        });
+        currentY = (doc as any).lastAutoTable?.finalY || (currentY + 15);
+      } else {
+        currentY += 8;
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text("No active site disruptions or downtime recorded during this project period.", 14, currentY);
+        currentY += 6;
+      }
+
+      delaysNextY = currentY + 12;
     }
 
     // 6. Daily Expenses Section
@@ -577,16 +630,52 @@ export default function ReportGenerator({
 
     // Tab 5: Site Delays & Weather
     const projectDelays = delayWeatherLogs.filter(d => d.projectId === activeProject.id);
-    const delayExcelRows = projectDelays.map(d => ({
-      "Date": d.date,
-      "Weather Condition": d.weather,
-      "Temperature (°C)": d.temperature || "N/A",
-      "Disruption / Strike Occurred?": d.isDelay ? "Yes" : "No",
-      "Downtime Duration (Hours)": d.delayHours || 0,
-      "Primary Delay Reason": d.delayReason || "N/A",
-      "Mitigation & Resolution Notes": d.delayNotes || "N/A"
-    }));
-    const wsDelays = XLSX.utils.json_to_sheet(delayExcelRows);
+    
+    // Statistics for Excel
+    const totalDays = projectDelays.length;
+    const delayEvents = projectDelays.filter(d => d.isDelay);
+    const disruptedDays = delayEvents.length;
+    const totalHours = projectDelays.reduce((sum, d) => sum + (d.delayHours || 0), 0);
+
+    const weatherCounts: Record<string, number> = {};
+    projectDelays.forEach(d => {
+      if (d.weather) {
+        const wFormatted = d.weather.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+        weatherCounts[wFormatted] = (weatherCounts[wFormatted] || 0) + 1;
+      }
+    });
+    const weatherBreakdown = Object.entries(weatherCounts)
+      .map(([w, count]) => `${w}: ${count}d`)
+      .join(', ');
+
+    const delayExcelData = [
+      ["SITE DOWNTIME & WEATHER SUMMARY", ""],
+      ["Metric / Tracker", "Summary Value"],
+      ["Total Tracked Days", `${totalDays} days`],
+      ["Disrupted Days", `${disruptedDays} days (${totalDays > 0 ? ((disruptedDays / totalDays) * 100).toFixed(0) : 0}%)`],
+      ["Total Downtime Duration", `${totalHours} hours`],
+      ["Weather Log Breakdown", weatherBreakdown || "None"],
+      [],
+      ["SITE DISRUPTION EVENTS (DOWNTIME LOG)", ""],
+      ["Date", "Weather Condition", "Temperature (°C)", "Downtime (Hours)", "Disruption Reason", "Resolution Notes"]
+    ];
+
+    if (delayEvents.length > 0) {
+      delayEvents.forEach(d => {
+        delayExcelData.push([
+          d.date,
+          d.weather ? d.weather.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase()) : "N/A",
+          d.temperature !== undefined ? `${d.temperature}` : "N/A",
+          `${d.delayHours || 0}`,
+          d.delayReason || "N/A",
+          d.delayNotes || "N/A"
+        ]);
+      });
+    } else {
+      delayExcelData.push(["No active site disruptions or downtime recorded during this project period.", "", "", "", "", ""]);
+    }
+
+    const wsDelays = XLSX.utils.aoa_to_sheet(delayExcelData);
     XLSX.utils.book_append_sheet(wb, wsDelays, "Site Downtime & Weather");
 
     // Tab 6: Daily Expenses & Miscellaneous Transactions

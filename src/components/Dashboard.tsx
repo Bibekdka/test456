@@ -3,8 +3,22 @@ import { Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense
 import { 
   Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
   TrendingUp, Users, Truck, Utensils, Percent, CircleDollarSign, 
-  BarChart3, CheckCircle2, AlertTriangle, PlayCircle, Search, X, RotateCcw, MapPin
+  BarChart3, CheckCircle2, AlertTriangle, PlayCircle, Search, X, RotateCcw, MapPin,
+  SlidersHorizontal, Info
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
 
 interface DashboardProps {
   projects: Project[];
@@ -24,6 +38,42 @@ interface DashboardProps {
   foodCalculationStartDate: string;
   onFoodCalculationStartDateChange: (date: string) => void;
 }
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white border border-slate-200 p-3 rounded-lg shadow-md font-sans text-xs space-y-1.5">
+        <p className="font-bold text-slate-800">{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <div key={index} className="flex items-center gap-2 justify-between">
+            <span className="flex items-center gap-1.5 font-medium text-slate-500">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              {entry.name}:
+            </span>
+            <span className="font-bold text-slate-800 font-mono">
+              ₹{Number(entry.value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </span>
+          </div>
+        ))}
+        {payload.length === 2 && (
+          <div className="border-t border-slate-100 pt-1.5 mt-1.5 flex items-center justify-between text-[11px]">
+            <span className="font-medium text-slate-500">Difference:</span>
+            {payload[1].value > payload[0].value ? (
+              <span className="text-rose-600 font-bold font-mono">
+                +₹{(payload[1].value - payload[0].value).toLocaleString(undefined, { maximumFractionDigits: 0 })} (Overrun)
+              </span>
+            ) : (
+              <span className="text-emerald-600 font-bold font-mono">
+                -₹{(payload[0].value - payload[1].value).toLocaleString(undefined, { maximumFractionDigits: 0 })} (Savings)
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return null;
+};
 
 export default function Dashboard({
   projects,
@@ -47,6 +97,11 @@ export default function Dashboard({
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'on_hold'>('all');
   const [useAutoFoodCalc, setUseAutoFoodCalc] = useState(true);
   
+  // Chart and Analytics Filter State
+  const [chartView, setChartView] = useState<'overall' | 'category' | 'variance'>('overall');
+  const [selectedChartProject, setSelectedChartProject] = useState<string>('all');
+  const [chartMinBudget, setChartMinBudget] = useState<string>('');
+
   // Add/Edit Modals or Forms
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -59,6 +114,10 @@ export default function Dashboard({
   const [targetDate, setTargetDate] = useState('');
   const [budget, setBudget] = useState('');
   const [status, setStatus] = useState<'active' | 'completed' | 'on_hold'>('active');
+  const [labourBudget, setLabourBudget] = useState('');
+  const [materialBudget, setMaterialBudget] = useState('');
+  const [foodBudget, setFoodBudget] = useState('');
+  const [expenseBudget, setExpenseBudget] = useState('');
 
   // Open Form
   const handleOpenAddForm = () => {
@@ -69,6 +128,10 @@ export default function Dashboard({
     setTargetDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
     setBudget('');
     setStatus('active');
+    setLabourBudget('');
+    setMaterialBudget('');
+    setFoodBudget('');
+    setExpenseBudget('');
     setEditingProject(null);
     setShowAddForm(true);
   };
@@ -83,6 +146,10 @@ export default function Dashboard({
     setTargetDate(p.targetDate);
     setBudget(p.budget.toString());
     setStatus(p.status);
+    setLabourBudget(p.labourBudget ? p.labourBudget.toString() : '');
+    setMaterialBudget(p.materialBudget ? p.materialBudget.toString() : '');
+    setFoodBudget(p.foodBudget ? p.foodBudget.toString() : '');
+    setExpenseBudget(p.expenseBudget ? p.expenseBudget.toString() : '');
     setShowAddForm(true);
   };
 
@@ -99,6 +166,10 @@ export default function Dashboard({
       targetDate,
       budget: Number(budget) || 0,
       status,
+      labourBudget: labourBudget ? Number(labourBudget) : undefined,
+      materialBudget: materialBudget ? Number(materialBudget) : undefined,
+      foodBudget: foodBudget ? Number(foodBudget) : undefined,
+      expenseBudget: expenseBudget ? Number(expenseBudget) : undefined,
     };
 
     if (editingProject) {
@@ -242,6 +313,78 @@ export default function Dashboard({
       return { text: `${diffDays} days left`, color: 'text-blue-600 bg-blue-50 border-blue-100' };
     }
   };
+
+  // Process data for Recharts based on selected filter state
+  const chartData = projects
+    .filter((p) => {
+      // Apply general filters
+      if (selectedChartProject !== 'all' && p.id !== selectedChartProject) return false;
+      if (chartMinBudget && p.budget < (Number(chartMinBudget) || 0)) return false;
+      return true;
+    })
+    .map((p) => {
+      const m = getProjectMetrics(p);
+      const totalActual = m.totalSpent;
+      const budgetTotal = p.budget;
+      const variance = totalActual - budgetTotal;
+      const variancePercent = budgetTotal > 0 ? (variance / budgetTotal) * 100 : 0;
+
+      // Category breakdown (using the advanced categories or default splits if undefined)
+      const categories = [
+        {
+          name: 'Labour',
+          Budget: p.labourBudget || 0,
+          Actual: m.labourWages,
+        },
+        {
+          name: 'Materials',
+          Budget: p.materialBudget || 0,
+          Actual: m.materialCost,
+        },
+        {
+          name: 'Food',
+          Budget: p.foodBudget || 0,
+          Actual: m.foodCost,
+        },
+        {
+          name: 'Expenses',
+          Budget: p.expenseBudget || 0,
+          Actual: m.dailyExpensesCost,
+        }
+      ];
+
+      return {
+        id: p.id,
+        name: p.name,
+        Budget: budgetTotal,
+        Actual: totalActual,
+        Variance: variance,
+        variancePercent,
+        categories,
+        metrics: m,
+      };
+    });
+
+  const aggregatedCategories = [
+    { name: 'Labour', Budget: 0, Actual: 0 },
+    { name: 'Materials', Budget: 0, Actual: 0 },
+    { name: 'Food', Budget: 0, Actual: 0 },
+    { name: 'Expenses', Budget: 0, Actual: 0 },
+  ];
+
+  chartData.forEach(item => {
+    aggregatedCategories[0].Budget += item.categories[0].Budget;
+    aggregatedCategories[0].Actual += item.categories[0].Actual;
+
+    aggregatedCategories[1].Budget += item.categories[1].Budget;
+    aggregatedCategories[1].Actual += item.categories[1].Actual;
+
+    aggregatedCategories[2].Budget += item.categories[2].Budget;
+    aggregatedCategories[2].Actual += item.categories[2].Actual;
+
+    aggregatedCategories[3].Budget += item.categories[3].Budget;
+    aggregatedCategories[3].Actual += item.categories[3].Actual;
+  });
 
   return (
     <div className="space-y-6">
@@ -499,6 +642,239 @@ export default function Dashboard({
             <span className="text-[10px] text-indigo-600 block leading-tight">Total actual cash outlay if you provide complimentary boarding on top of standard wages.</span>
           </div>
         </div>
+      </div>
+
+      {/* Dynamic Budget vs Expenditure Chart Section */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="space-y-0.5">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <BarChart3 className="w-4 h-4 text-indigo-600" />
+              Budget vs. Actual Expenditure Analytics
+            </h3>
+            <p className="text-[10px] text-slate-500">
+              Interactive financial performance visualization of site allocations against actual cumulative payroll, materials, food, and miscellaneous costs.
+            </p>
+          </div>
+
+          {/* Quick Tabs to toggle view modes */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg self-start sm:self-auto">
+            <button
+              onClick={() => setChartView('overall')}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition cursor-pointer ${
+                chartView === 'overall'
+                  ? 'bg-white text-slate-800 shadow-3xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Overall Budgets
+            </button>
+            <button
+              onClick={() => setChartView('category')}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition cursor-pointer ${
+                chartView === 'category'
+                  ? 'bg-white text-slate-800 shadow-3xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Category Splits
+            </button>
+            <button
+              onClick={() => setChartView('variance')}
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-md transition cursor-pointer ${
+                chartView === 'variance'
+                  ? 'bg-white text-slate-800 shadow-3xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Variance / Overruns
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Interactive Filters */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50/50 p-3.5 rounded-xl border border-slate-100 text-xs">
+          <div className="space-y-1">
+            <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px] flex items-center gap-1">
+              <SlidersHorizontal className="w-3 h-3 text-slate-400" />
+              Filter Site Focus
+            </label>
+            <select
+              value={selectedChartProject}
+              onChange={(e) => setSelectedChartProject(e.target.value)}
+              className="w-full bg-white border border-slate-200 text-xs font-medium rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+            >
+              <option value="all">All Registered Sites (Aggregated)</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.status})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">
+              Min Budget Threshold (₹)
+            </label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-2 text-slate-400 font-mono text-[10px]">₹</span>
+              <input
+                type="number"
+                placeholder="e.g. 50000"
+                value={chartMinBudget}
+                onChange={(e) => setChartMinBudget(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-lg pl-5 pr-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <button
+              onClick={() => {
+                setSelectedChartProject('all');
+                setChartMinBudget('');
+                setChartView('overall');
+              }}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-lg transition text-xs flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Graph Filters</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Chart Viewport */}
+        <div className="h-[280px] w-full pt-2">
+          {projects.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs font-mono">
+              <BarChart3 className="w-10 h-10 text-slate-300 mb-2 animate-pulse" />
+              Please register a project to view expenditure graphs.
+            </div>
+          ) : chartData.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 text-xs font-mono">
+              <Info className="w-10 h-10 text-slate-300 mb-2" />
+              No projects fit the current filters.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              {chartView === 'overall' ? (
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <YAxis 
+                    tickFormatter={(value) => `₹${value >= 100000 ? (value / 100000).toFixed(1) + 'L' : value}`}
+                    tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend 
+                    wrapperStyle={{ fontSize: 10, paddingTop: 10 }}
+                    verticalAlign="bottom"
+                    height={36}
+                  />
+                  <Bar name="Allocated Budget" dataKey="Budget" fill="#64748b" radius={[4, 4, 0, 0]} barSize={22} />
+                  <Bar name="Actual Expenditure" dataKey="Actual" fill="#4f46e5" radius={[4, 4, 0, 0]} barSize={22} />
+                </BarChart>
+              ) : chartView === 'category' ? (
+                <BarChart
+                  data={
+                    selectedChartProject === 'all' 
+                      ? aggregatedCategories 
+                      : chartData[0]?.categories || []
+                  }
+                  margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <YAxis 
+                    tickFormatter={(value) => `₹${value >= 100000 ? (value / 100000).toFixed(1) + 'L' : value}`}
+                    tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend 
+                    wrapperStyle={{ fontSize: 10, paddingTop: 10 }}
+                    verticalAlign="bottom"
+                    height={36}
+                  />
+                  <Bar name="Allocated Target" dataKey="Budget" fill="#94a3b8" radius={[4, 4, 0, 0]} barSize={22} />
+                  <Bar name="Cumulative Actual" dataKey="Actual" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={22} />
+                </BarChart>
+              ) : (
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 15, right: 10, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fill: '#64748b', fontSize: 10 }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <YAxis 
+                    tickFormatter={(value) => `₹${value >= 100000 || value <= -100000 ? (value / 100000).toFixed(1) + 'L' : value}`}
+                    tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }}
+                    axisLine={{ stroke: '#cbd5e1' }}
+                    tickLine={{ stroke: '#cbd5e1' }}
+                  />
+                  <Tooltip 
+                    formatter={(value: any) => [
+                      `₹${Number(value).toLocaleString()}`, 
+                      Number(value) > 0 ? 'Deficit (Over Budget)' : 'Savings (Under Budget)'
+                    ]}
+                    labelStyle={{ fontWeight: 'bold' }}
+                    contentStyle={{ fontSize: 11 }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: 10, paddingTop: 10 }}
+                    verticalAlign="bottom"
+                    height={36}
+                  />
+                  <Bar 
+                    name="Deficit (+) / Savings (-)" 
+                    dataKey="Variance" 
+                    radius={[4, 4, 0, 0]}
+                    barSize={24}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.Variance > 0 ? '#f43f5e' : '#10b981'} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Informative Help Alert */}
+        {chartView === 'category' && (
+          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 flex items-start gap-2 text-slate-600">
+            <Info className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+            <span className="text-[10px] leading-relaxed">
+              <strong>Tip:</strong> You can edit site profiles from the site directory below and populate <strong>Advanced Category-Wise Targets</strong> (Labour, Materials, Food, and Expenses) to see target lines compared side-by-side with your actual spent metrics in this tab.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Projects Directory & Actions */}
@@ -773,6 +1149,87 @@ export default function Dashboard({
                     <option value="completed">Completed</option>
                     <option value="on_hold">On Hold</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Category-wise Budgets */}
+              <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-700 uppercase tracking-wider text-[9px] flex items-center gap-1">
+                    <SlidersHorizontal className="w-3 h-3 text-indigo-600" />
+                    Advanced Category-Wise Targets
+                  </span>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      const sum = (Number(labourBudget) || 0) + (Number(materialBudget) || 0) + (Number(foodBudget) || 0) + (Number(expenseBudget) || 0);
+                      if (sum > 0) {
+                        setBudget(sum.toString());
+                      }
+                    }}
+                    className="text-[9px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
+                    title="Calculate total budget from categories"
+                  >
+                    Sum to Total Budget
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5 text-[10px]">
+                  <div className="space-y-1">
+                    <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Labour Target</label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-2 text-slate-400 font-mono text-[9px]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Allocated"
+                        value={labourBudget}
+                        onChange={(e) => setLabourBudget(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-4.5 pr-1.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Materials Target</label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-2 text-slate-400 font-mono text-[9px]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Allocated"
+                        value={materialBudget}
+                        onChange={(e) => setMaterialBudget(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-4.5 pr-1.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Food Target</label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-2 text-slate-400 font-mono text-[9px]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Allocated"
+                        value={foodBudget}
+                        onChange={(e) => setFoodBudget(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-4.5 pr-1.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-500 font-semibold uppercase tracking-wider text-[9px]">Expenses Target</label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-2 text-slate-400 font-mono text-[9px]">₹</span>
+                      <input
+                        type="number"
+                        placeholder="Allocated"
+                        value={expenseBudget}
+                        onChange={(e) => setExpenseBudget(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-4.5 pr-1.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

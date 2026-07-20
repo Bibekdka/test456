@@ -12,13 +12,16 @@ import {
   ArrowUpRight, 
   ArrowDownLeft, 
   Download, 
-  FileText 
+  FileText,
+  Edit,
+  X
 } from 'lucide-react';
 
 interface GstTrackerProps {
   activeProject: Project | null;
   gstRecords: GstRecord[];
   onAddGstRecord: (record: GstRecord) => Promise<void>;
+  onUpdateGstRecord: (record: GstRecord) => Promise<void>;
   onDeleteGstRecord: (id: string) => Promise<void>;
 }
 
@@ -26,12 +29,16 @@ export default function GstTracker({
   activeProject,
   gstRecords,
   onAddGstRecord,
+  onUpdateGstRecord,
   onDeleteGstRecord,
 }: GstTrackerProps) {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'paid' | 'claimed'>('all');
   const [filterRate, setFilterRate] = useState<string>('all');
+
+  // Editing State
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
   // Form State
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -89,6 +96,30 @@ export default function GstTracker({
   // Net GST Payable to Govt = Output tax (claimed/collected on sales) - Input tax (paid on inputs/purchases)
   const netGstPayable = totalClaimedGst - totalPaidGst;
 
+  const startEdit = (rec: GstRecord) => {
+    setEditingRecordId(rec.id);
+    setInvoiceNo(rec.invoiceNo);
+    setPartyName(rec.partyName);
+    setGstin(rec.gstin || '');
+    setAmount(rec.amount.toString());
+    setGstRate(rec.gstRate);
+    setGstType(rec.type);
+    setDate(rec.date);
+    setNotes(rec.notes || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingRecordId(null);
+    setInvoiceNo('');
+    setPartyName('');
+    setGstin('');
+    setAmount('');
+    setGstRate(18);
+    setGstType('paid');
+    setDate(new Date().toISOString().split('T')[0]);
+    setNotes('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceNo.trim() || !partyName.trim() || !amount) {
@@ -105,28 +136,46 @@ export default function GstTracker({
     // Standard Indian GST amount calculation
     const calculatedGst = parseFloat((taxableVal * (gstRate / 100)).toFixed(2));
 
-    const newRecord: GstRecord = {
-      id: `gst-${Date.now()}`,
-      projectId: activeProject.id,
-      date,
-      invoiceNo,
-      partyName,
-      gstin: gstin.toUpperCase().trim() || undefined,
-      amount: taxableVal,
-      gstRate,
-      gstAmount: calculatedGst,
-      type: gstType,
-      notes: notes.trim() || undefined,
-    };
+    if (editingRecordId) {
+      const updatedRecord: GstRecord = {
+        id: editingRecordId,
+        projectId: activeProject.id,
+        date,
+        invoiceNo,
+        partyName,
+        gstin: gstin.toUpperCase().trim() || undefined,
+        amount: taxableVal,
+        gstRate,
+        gstAmount: calculatedGst,
+        type: gstType,
+        notes: notes.trim() || undefined,
+      };
+      await onUpdateGstRecord(updatedRecord);
+      cancelEdit();
+    } else {
+      const newRecord: GstRecord = {
+        id: `gst-${Date.now()}`,
+        projectId: activeProject.id,
+        date,
+        invoiceNo,
+        partyName,
+        gstin: gstin.toUpperCase().trim() || undefined,
+        amount: taxableVal,
+        gstRate,
+        gstAmount: calculatedGst,
+        type: gstType,
+        notes: notes.trim() || undefined,
+      };
 
-    await onAddGstRecord(newRecord);
-    
-    // Reset Form
-    setInvoiceNo('');
-    setPartyName('');
-    setGstin('');
-    setAmount('');
-    setNotes('');
+      await onAddGstRecord(newRecord);
+      
+      // Reset Form
+      setInvoiceNo('');
+      setPartyName('');
+      setGstin('');
+      setAmount('');
+      setNotes('');
+    }
   };
 
   return (
@@ -219,7 +268,9 @@ export default function GstTracker({
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
             <Receipt className="w-4 h-4 text-slate-500" />
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Log GST Invoice</h4>
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              {editingRecordId ? 'Edit GST Invoice' : 'Log GST Invoice'}
+            </h4>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -370,13 +421,29 @@ export default function GstTracker({
               />
             </div>
 
-            <button
-              type="submit"
-              className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Record GST Entry</span>
-            </button>
+            <div className="flex gap-2">
+              {editingRecordId && (
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="w-1/3 py-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold transition flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Cancel</span>
+                </button>
+              )}
+              <button
+                type="submit"
+                className={`py-2.5 rounded-lg font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                  editingRecordId 
+                    ? 'w-2/3 bg-indigo-600 hover:bg-indigo-700 text-white' 
+                    : 'w-full bg-slate-900 hover:bg-slate-800 text-white'
+                }`}
+              >
+                {editingRecordId ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                <span>{editingRecordId ? 'Update Entry' : 'Record GST Entry'}</span>
+              </button>
+            </div>
           </form>
         </div>
 
@@ -512,17 +579,26 @@ export default function GstTracker({
 
                         {/* Actions */}
                         <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <button
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to delete invoice ${rec.invoiceNo}?`)) {
-                                onDeleteGstRecord(rec.id);
-                              }
-                            }}
-                            className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
-                            title="Delete invoice entry"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => startEdit(rec)}
+                              className="text-slate-400 hover:text-indigo-600 p-1 rounded-md hover:bg-indigo-50 transition cursor-pointer"
+                              title="Edit invoice entry"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Are you sure you want to delete invoice ${rec.invoiceNo}?`)) {
+                                  onDeleteGstRecord(rec.id);
+                                }
+                              }}
+                              className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
+                              title="Delete invoice entry"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

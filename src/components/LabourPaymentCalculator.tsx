@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Labour, Attendance, Advance, Payment } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, getLabourDaysWorked } from '../types';
 import { 
   IndianRupee, 
   Calendar, 
@@ -76,11 +76,7 @@ export default function LabourPaymentCalculator({
       r => r.labourId === l.id && r.projectId === activeProject.id
     );
 
-    let daysWorked = 0;
-    projectAtt.forEach(att => {
-      if (att.status === 'present') daysWorked += 1;
-      else if (att.status === 'half_day') daysWorked += 0.5;
-    });
+    const daysWorked = getLabourDaysWorked(l, attendanceRecords, activeProject.id, activeProject.startDate);
 
     // 2. Base wages earned
     const baseWages = daysWorked * l.perDayWage;
