@@ -477,6 +477,10 @@ export default function App() {
       const refreshedLogsList = await getAllItems<DelayWeatherLog>('delay_weather_logs');
       setDelayWeatherLogs(refreshedLogsList);
       
+      if (navigator.onLine) {
+        triggerSync('Auto-sync: Fetched project weather logs');
+      }
+      
       alert(`Auto-fetched ${logsToSave.length} online weather records for "${geoName}" from ${start} (start date) to today!`);
     } catch (error) {
       console.error('Error fetching weather data:', error);
