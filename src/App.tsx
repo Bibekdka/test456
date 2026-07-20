@@ -95,15 +95,51 @@ export default function App() {
       return;
     }
     setSyncing(true);
-    // Simulate high quality backend database reconciliation with our local IndexedDB state
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setSyncing(false);
-    const timestamp = new Date().toLocaleTimeString();
-    setLastSynced(timestamp);
-    setSyncHistory(prev => [
-      `[${timestamp}] ${reason} - Successfully synchronized all records to back-end cloud server.`,
-      ...prev.slice(0, 4)
-    ]);
+    try {
+      const payload = {
+        projects: await getAllItems<Project>('projects'),
+        labours: await getAllItems<Labour>('labours'),
+        attendance: await getAllItems<Attendance>('attendance'),
+        advances: await getAllItems<Advance>('advances'),
+        payments: await getAllItems<Payment>('payments'),
+        materials: await getAllItems<Material>('materials'),
+        hotel_advances: await getAllItems<HotelAdvance>('hotel_advances'),
+        food_logs: await getAllItems<FoodLog>('food_logs'),
+        gst_records: await getAllItems<GstRecord>('gst_records'),
+        payers: await getAllItems<Payer>('payers'),
+        site_diaries: await getAllItems<SiteDiaryEntry>('site_diaries'),
+        delay_weather_logs: await getAllItems<DelayWeatherLog>('delay_weather_logs'),
+        daily_expenses: await getAllItems<DailyExpense>('daily_expenses'),
+      };
+
+      const response = await fetch('/api/db/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error('Server sync failed');
+      }
+
+      const timestamp = new Date().toLocaleTimeString();
+      setLastSynced(timestamp);
+      setSyncHistory(prev => [
+        `[${timestamp}] ${reason} - Successfully synchronized all records to back-end cloud server.`,
+        ...prev.slice(0, 4)
+      ]);
+    } catch (err) {
+      console.error('Sync failed:', err);
+      const timestamp = new Date().toLocaleTimeString();
+      setSyncHistory(prev => [
+        `[${timestamp}] Sync Failed: Could not connect to database server.`,
+        ...prev.slice(0, 4)
+      ]);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   useEffect(() => {
@@ -131,24 +167,103 @@ export default function App() {
       await initDB();
       await seedSampleDataIfEmpty();
 
-      // Retrieve all lists
-      const pList = await getAllItems<Project>('projects');
-      const lList = await getAllItems<Labour>('labours');
-      const attList = await getAllItems<Attendance>('attendance');
-      const advList = await getAllItems<Advance>('advances');
-      const payList = await getAllItems<Payment>('payments');
-      const matList = await getAllItems<Material>('materials');
-      const haList = await getAllItems<HotelAdvance>('hotel_advances');
-      const flList = await getAllItems<FoodLog>('food_logs');
-      const gstList = await getAllItems<GstRecord>('gst_records');
-      const payersList = await getAllItems<Payer>('payers');
-      const sdList = await getAllItems<SiteDiaryEntry>('site_diaries');
-      const dwList = await getAllItems<DelayWeatherLog>('delay_weather_logs');
+      // Retrieve all lists from local DB initially
+      let pList = await getAllItems<Project>('projects');
+      let lList = await getAllItems<Labour>('labours');
+      let attList = await getAllItems<Attendance>('attendance');
+      let advList = await getAllItems<Advance>('advances');
+      let payList = await getAllItems<Payment>('payments');
+      let matList = await getAllItems<Material>('materials');
+      let haList = await getAllItems<HotelAdvance>('hotel_advances');
+      let flList = await getAllItems<FoodLog>('food_logs');
+      let gstList = await getAllItems<GstRecord>('gst_records');
+      let payersList = await getAllItems<Payer>('payers');
+      let sdList = await getAllItems<SiteDiaryEntry>('site_diaries');
+      let dwList = await getAllItems<DelayWeatherLog>('delay_weather_logs');
       let expList: DailyExpense[] = [];
       try {
         expList = await getAllItems<DailyExpense>('daily_expenses');
       } catch (err) {
         console.warn('daily_expenses store might not exist yet', err);
+      }
+
+      // Try fetching from the server
+      try {
+        const response = await fetch('/api/db');
+        if (response.ok) {
+          const serverDb = await response.json();
+          const serverHasData = serverDb.projects && serverDb.projects.length > 0;
+
+          if (serverHasData) {
+            // Server has data, overwrite local IndexedDB to keep in sync
+            await clearStore('projects');
+            await clearStore('labours');
+            await clearStore('attendance');
+            await clearStore('advances');
+            await clearStore('payments');
+            await clearStore('materials');
+            await clearStore('hotel_advances');
+            await clearStore('food_logs');
+            await clearStore('gst_records');
+            await clearStore('payers');
+            await clearStore('site_diaries');
+            await clearStore('delay_weather_logs');
+            await clearStore('daily_expenses');
+
+            await putItems('projects', serverDb.projects || []);
+            await putItems('labours', serverDb.labours || []);
+            await putItems('attendance', serverDb.attendance || []);
+            await putItems('advances', serverDb.advances || []);
+            await putItems('payments', serverDb.payments || []);
+            await putItems('materials', serverDb.materials || []);
+            await putItems('hotel_advances', serverDb.hotel_advances || []);
+            await putItems('food_logs', serverDb.food_logs || []);
+            await putItems('gst_records', serverDb.gst_records || []);
+            await putItems('payers', serverDb.payers || []);
+            await putItems('site_diaries', serverDb.site_diaries || []);
+            await putItems('delay_weather_logs', serverDb.delay_weather_logs || []);
+            await putItems('daily_expenses', serverDb.daily_expenses || []);
+
+            // Reload local variables
+            pList = serverDb.projects || [];
+            lList = serverDb.labours || [];
+            attList = serverDb.attendance || [];
+            advList = serverDb.advances || [];
+            payList = serverDb.payments || [];
+            matList = serverDb.materials || [];
+            haList = serverDb.hotel_advances || [];
+            flList = serverDb.food_logs || [];
+            gstList = serverDb.gst_records || [];
+            payersList = serverDb.payers || [];
+            sdList = serverDb.site_diaries || [];
+            dwList = serverDb.delay_weather_logs || [];
+            expList = serverDb.daily_expenses || [];
+          } else if (pList.length > 0) {
+            // Server is empty, but local has data, so push local database to server
+            const payload = {
+              projects: pList,
+              labours: lList,
+              attendance: attList,
+              advances: advList,
+              payments: payList,
+              materials: matList,
+              hotel_advances: haList,
+              food_logs: flList,
+              gst_records: gstList,
+              payers: payersList,
+              site_diaries: sdList,
+              delay_weather_logs: dwList,
+              daily_expenses: expList,
+            };
+            await fetch('/api/db/sync', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync database on load, using local IndexedDB offline:', err);
       }
 
       // Automatically keep the Tezu project data and remove known legacy projects (Skyline Heights & Commercial Plaza)
@@ -378,6 +493,9 @@ export default function App() {
     if (p.location) {
       fetchWeatherForProject(p);
     }
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Created new project');
+    }
   };
 
   const handleUpdateProject = async (p: Project) => {
@@ -385,6 +503,9 @@ export default function App() {
     setProjects(prev => prev.map(item => item.id === p.id ? p : item));
     if (p.location) {
       fetchWeatherForProject(p);
+    }
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated project settings');
     }
   };
 
@@ -441,6 +562,9 @@ export default function App() {
     if (activeProjectId === id) {
       const remaining = projects.filter(p => p.id !== id);
       setActiveProjectId(remaining.length > 0 ? remaining[0].id : null);
+    }
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted project');
     }
   };
 
@@ -507,6 +631,9 @@ export default function App() {
       );
       return [...filtered, ...records];
     });
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated worker attendance');
+    }
   };
 
   const handleAddAdvance = async (adv: Advance) => {
@@ -518,6 +645,9 @@ export default function App() {
       }
       return [...prev, adv];
     });
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Added advance payment');
+    }
   };
 
   // ----------------------------------------------------
@@ -526,21 +656,33 @@ export default function App() {
   const handleAddPayer = async (p: Payer) => {
     await putItem('payers', p);
     setPayers(prev => [...prev, p]);
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Registered financial payer');
+    }
   };
 
   const handleUpdatePayer = async (p: Payer) => {
     await putItem('payers', p);
     setPayers(prev => prev.map(item => item.id === p.id ? p : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated financial payer');
+    }
   };
 
   const handleDeletePayer = async (id: string) => {
     await deleteItem('payers', id);
     setPayers(prev => prev.filter(p => p.id !== id));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted financial payer');
+    }
   };
 
   const handleDeleteAdvance = async (id: string) => {
     await deleteItem('advances', id);
     setAdvanceRecords(prev => prev.filter(item => item.id !== id));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted advance payment');
+    }
   };
 
   // ----------------------------------------------------
@@ -549,11 +691,17 @@ export default function App() {
   const handleRecordPayment = async (pay: Payment) => {
     await putItem('payments', pay);
     setPaymentRecords(prev => [...prev, pay]);
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Recorded worker payment');
+    }
   };
 
   const handleDeletePayment = async (id: string) => {
     await deleteItem('payments', id);
     setPaymentRecords(prev => prev.filter(item => item.id !== id));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted worker payment');
+    }
   };
 
   // ----------------------------------------------------
@@ -562,16 +710,25 @@ export default function App() {
   const handleAddMaterial = async (m: Material) => {
     await putItem('materials', m);
     setMaterials(prev => [...prev, m]);
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Logged material invoice');
+    }
   };
 
   const handleUpdateMaterial = async (m: Material) => {
     await putItem('materials', m);
     setMaterials(prev => prev.map(item => item.id === m.id ? m : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated material invoice');
+    }
   };
 
   const handleDeleteMaterial = async (id: string) => {
     await deleteItem('materials', id);
     setMaterials(prev => prev.filter(item => item.id !== id));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted material invoice');
+    }
   };
 
   // ----------------------------------------------------
