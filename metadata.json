@@ -1,0 +1,6 @@
+{
+  "name": "Tezu Construction Manager",
+  "description": "Calculate and manage construction projects, track labour attendance, wages, advances, materials, store bill images, and download PDF and Excel reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
