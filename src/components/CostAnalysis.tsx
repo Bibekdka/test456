@@ -1,5 +1,5 @@
 import React from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, DailyExpense, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
 import { 
   TrendingUp, IndianRupee, AlertCircle, Calendar, Briefcase, 
   Users, Truck, Utensils, Percent, CircleDollarSign, ShieldAlert 
@@ -14,6 +14,7 @@ interface CostAnalysisProps {
   materials: Material[];
   hotelAdvances: HotelAdvance[];
   foodLogs: FoodLog[];
+  dailyExpenses: DailyExpense[];
   foodCalculationStartDate: string;
   onFoodCalculationStartDateChange: (date: string) => void;
 }
@@ -27,6 +28,7 @@ export default function CostAnalysis({
   materials,
   hotelAdvances,
   foodLogs,
+  dailyExpenses,
   foodCalculationStartDate,
   onFoodCalculationStartDateChange
 }: CostAnalysisProps) {
@@ -92,8 +94,12 @@ export default function CostAnalysis({
 
   const totalFoodCost = useAutoFoodCalc ? totalAutoFoodCost : totalManualFoodCost;
 
+  // Daily Expenses and Misc
+  const projectExpenses = (dailyExpenses || []).filter(e => e.projectId === activeProject.id);
+  const totalDailyExpensesCost = projectExpenses.reduce((sum, e) => sum + e.amount, 0);
+
   // Total project cost
-  const totalProjectCost = totalLabourWagesEarned + totalMaterialCost + totalFoodCost;
+  const totalProjectCost = totalLabourWagesEarned + totalMaterialCost + totalFoodCost + totalDailyExpensesCost;
   
   // Budget left
   const budgetRemaining = activeProject.budget - totalProjectCost;
@@ -114,6 +120,7 @@ export default function CostAnalysis({
   const labourPercent = totalProjectCost > 0 ? (totalLabourWagesEarned / totalProjectCost) * 100 : 0;
   const materialPercent = totalProjectCost > 0 ? (totalMaterialCost / totalProjectCost) * 100 : 0;
   const foodPercent = totalProjectCost > 0 ? (totalFoodCost / totalProjectCost) * 100 : 0;
+  const dailyExpensesPercent = totalProjectCost > 0 ? (totalDailyExpensesCost / totalProjectCost) * 100 : 0;
 
   // Rule-based actionable insights
   const insights: { type: 'alert' | 'warning' | 'good', message: string, title: string }[] = [];
@@ -309,6 +316,18 @@ export default function CostAnalysis({
                     strokeDasharray={`${foodPercent * 2.512} 251.2`}
                     strokeDashoffset={`-${(labourPercent + materialPercent) * 2.512}`}
                   />
+                  
+                  {/* Segment 4: Daily Expenses & Misc */}
+                  <circle 
+                    cx="50" 
+                    cy="50" 
+                    r="40" 
+                    fill="transparent" 
+                    stroke="#10b981" 
+                    strokeWidth="12" 
+                    strokeDasharray={`${dailyExpensesPercent * 2.512} 251.2`}
+                    strokeDashoffset={`-${(labourPercent + materialPercent + foodPercent) * 2.512}`}
+                  />
                 </svg>
               )}
               {totalProjectCost > 0 && (
@@ -322,38 +341,50 @@ export default function CostAnalysis({
             {/* Custom Interactive Legend with Percentage and Totals */}
             <div className="space-y-3 flex-1 w-full">
               {/* Labour wages */}
-              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition">
+              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition cursor-default">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-indigo-600" />
                   <span className="text-xs font-semibold text-slate-700">Labour Wages</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-bold text-slate-900 block">₹{totalLabourWagesEarned.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-slate-900 block font-mono">₹{totalLabourWagesEarned.toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 font-mono">{labourPercent.toFixed(0)}%</span>
                 </div>
               </div>
 
               {/* Material Purchase */}
-              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition">
+              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition cursor-default">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-sky-500" />
                   <span className="text-xs font-semibold text-slate-700">Material Stocks</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-bold text-slate-900 block">₹{totalMaterialCost.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-slate-900 block font-mono">₹{totalMaterialCost.toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 font-mono">{materialPercent.toFixed(0)}%</span>
                 </div>
               </div>
 
               {/* Hotel Food Tab */}
-              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition">
+              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition cursor-default">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-amber-500" />
                   <span className="text-xs font-semibold text-slate-700">Hotel Meals Cost</span>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs font-bold text-slate-900 block">₹{totalFoodCost.toLocaleString()}</span>
+                  <span className="text-xs font-bold text-slate-900 block font-mono">₹{totalFoodCost.toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 font-mono">{foodPercent.toFixed(0)}%</span>
+                </div>
+              </div>
+
+              {/* Daily Expenses & Misc */}
+              <div className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg transition cursor-default">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-semibold text-slate-700">Daily Expenses & Misc</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-bold text-slate-900 block font-mono font-semibold">₹{totalDailyExpensesCost.toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400 font-mono">{dailyExpensesPercent.toFixed(0)}%</span>
                 </div>
               </div>
             </div>

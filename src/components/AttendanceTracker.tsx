@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer } from '../types';
-import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins } from 'lucide-react';
+import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil } from 'lucide-react';
 
 interface AttendanceTrackerProps {
   activeProject: Project | null;
@@ -17,6 +17,7 @@ interface AttendanceTrackerProps {
   onAddAdvance: (advance: Advance) => void;
   onDeleteAdvance: (id: string) => void;
   onAddPayer: (payer: Payer) => void;
+  onUpdatePayer: (payer: Payer) => void;
   onDeletePayer: (id: string) => void;
   onUpdateLabour: (labour: Labour) => void;
 }
@@ -31,6 +32,7 @@ export default function AttendanceTracker({
   onAddAdvance,
   onDeleteAdvance,
   onAddPayer,
+  onUpdatePayer,
   onDeletePayer,
   onUpdateLabour,
 }: AttendanceTrackerProps) {
@@ -56,6 +58,7 @@ export default function AttendanceTracker({
   const [payerName, setPayerName] = useState('');
   const [payerRole, setPayerRole] = useState('');
   const [payerPhone, setPayerPhone] = useState('');
+  const [editingPayer, setEditingPayer] = useState<Payer | null>(null);
 
   // Active labours who joined on or before selectedDate, and haven't left, or left AFTER the selected date
   const activeLabours = labours.filter(l => {
@@ -250,21 +253,47 @@ export default function AttendanceTracker({
     alert('Standalone advance logged successfully!');
   };
 
+  const handleEditPayerClick = (p: Payer) => {
+    setEditingPayer(p);
+    setPayerName(p.name);
+    setPayerRole(p.role || '');
+    setPayerPhone(p.phone || '');
+    document.getElementById('attendance-tracker-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleCancelPayerEdit = () => {
+    setEditingPayer(null);
+    setPayerName('');
+    setPayerRole('');
+    setPayerPhone('');
+  };
+
   const handleAddPayerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!payerName.trim()) return;
 
-    onAddPayer({
-      id: 'p_' + Math.random().toString(36).substr(2, 9),
-      name: payerName.trim(),
-      role: payerRole.trim() || undefined,
-      phone: payerPhone.trim() || undefined,
-    });
+    if (editingPayer) {
+      onUpdatePayer({
+        ...editingPayer,
+        name: payerName.trim(),
+        role: payerRole.trim() || undefined,
+        phone: payerPhone.trim() || undefined,
+      });
+      setEditingPayer(null);
+      alert('Payer updated successfully!');
+    } else {
+      onAddPayer({
+        id: 'p_' + Math.random().toString(36).substr(2, 9),
+        name: payerName.trim(),
+        role: payerRole.trim() || undefined,
+        phone: payerPhone.trim() || undefined,
+      });
+      alert('Payer added to directory!');
+    }
 
     setPayerName('');
     setPayerRole('');
     setPayerPhone('');
-    alert('Payer added to directory!');
   };
 
   // Filter advances to show only for active project
@@ -834,10 +863,12 @@ export default function AttendanceTracker({
             <div>
               <h3 className="font-bold text-slate-800 text-base flex items-center gap-1.5">
                 <Users className="w-5 h-5 text-slate-700" />
-                Manage Payers / Accepting Officers Directory
+                {editingPayer ? 'Edit Payer / Accepting Officer' : 'Manage Payers / Accepting Officers Directory'}
               </h3>
               <p className="text-slate-400 text-xs">
-                Configure names of managers, sub-contractors, or supervisors who distribute cash advances. Once added, you can tag each advance to know exactly who paid it.
+                {editingPayer 
+                  ? `Editing details for "${editingPayer.name}". Changes will update across all linked cash advance records.`
+                  : 'Configure names of managers, sub-contractors, or supervisors who distribute cash advances. Once added, you can tag each advance to know exactly who paid it.'}
               </p>
             </div>
 
@@ -876,13 +907,31 @@ export default function AttendanceTracker({
                 />
               </div>
 
-              <div className="col-span-1 md:col-span-4 flex justify-end pt-1">
+              <div className="col-span-1 md:col-span-4 flex justify-end gap-2 pt-1">
+                {editingPayer && (
+                  <button
+                    type="button"
+                    onClick={handleCancelPayerEdit}
+                    className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 border border-slate-200 rounded-lg px-4 py-2 text-xs font-semibold cursor-pointer hover:bg-slate-200 transition"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
                 <button
                   type="submit"
                   className="inline-flex items-center gap-1.5 bg-slate-950 text-white rounded-lg px-4 py-2 text-xs font-semibold cursor-pointer hover:bg-slate-800 transition"
                 >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  Add Person to Directory
+                  {editingPayer ? (
+                    <>
+                      <Pencil className="w-3.5 h-3.5" />
+                      Update Person
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-3.5 h-3.5" />
+                      Add Person to Directory
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -924,21 +973,31 @@ export default function AttendanceTracker({
                           )}
                         </td>
                         <td className="py-2.5 px-4 text-slate-500 font-mono">{p.phone || '-'}</td>
-                        <td className="py-2.5 px-4 text-center">
-                          {['p-sudip', 'p-vijay', 'p-supervisor', 'p-cashier'].includes(p.id) ? (
-                            <span className="text-[10px] text-slate-400 italic">System Default</span>
-                          ) : (
+                        <td className="py-2.5 px-4">
+                          <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => {
-                                if (confirm(`Remove "${p.name}" from the payer list?`)) {
-                                  onDeletePayer(p.id);
-                                }
-                              }}
-                              className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-50 transition cursor-pointer"
+                              onClick={() => handleEditPayerClick(p)}
+                              className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-slate-50 transition cursor-pointer"
+                              title="Edit payer details"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                            {['p-sudip', 'p-vijay', 'p-supervisor', 'p-cashier'].includes(p.id) ? (
+                              <span className="text-[10px] text-slate-400 italic">System Default</span>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Remove "${p.name}" from the payer list?`)) {
+                                    onDeletePayer(p.id);
+                                  }
+                                }}
+                                className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-slate-50 transition cursor-pointer"
+                                title="Delete payer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

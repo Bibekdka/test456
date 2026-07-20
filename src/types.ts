@@ -141,6 +141,20 @@ export interface GstRecord {
   notes?: string;
 }
 
+export interface DailyExpense {
+  id: string;
+  projectId: string;
+  date: string; // YYYY-MM-DD
+  category: 'labour_expense' | 'misc_transaction';
+  subCategory: string; // e.g., 'transport', 'medical', 'tea_snacks', 'tools', 'fuel', 'stationery', 'rent', 'other'
+  amount: number;
+  description: string;
+  labourId?: string; // Reference to a specific labourer if category is 'labour_expense'
+  payerId?: string; // Reference to Payer ID or Name who distributed/paid this
+  receiptImage?: string; // Base64 data URI of receipt
+  receiptImageName?: string;
+}
+
 export function getAutoFoodDaysAndCost(labour: Labour, projectStartDate?: string): { days: number; cost: number; joinDate: string; endDate: string } {
   const defaultJoin = projectStartDate || new Date().toISOString().split('T')[0];
   const joinDateStr = labour.joinedDate || defaultJoin;

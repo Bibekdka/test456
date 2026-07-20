@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog } from './types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
 import {
   initDB,
   getAllItems,
@@ -28,6 +28,7 @@ import GstTracker from './components/GstTracker';
 import Dashboard from './components/Dashboard';
 import SiteDiary from './components/SiteDiary';
 import DelayWeatherTracker from './components/DelayWeatherTracker';
+import DailyExpensesTracker from './components/DailyExpensesTracker';
 
 import {
   Briefcase,
@@ -49,10 +50,11 @@ import {
   Percent,
   BarChart3,
   BookOpen,
-  CloudSun
+  CloudSun,
+  Receipt
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays';
+type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -71,6 +73,7 @@ export default function App() {
   const [payers, setPayers] = useState<Payer[]>([]);
   const [siteDiaries, setSiteDiaries] = useState<SiteDiaryEntry[]>([]);
   const [delayWeatherLogs, setDelayWeatherLogs] = useState<DelayWeatherLog[]>([]);
+  const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([]);
   const [isWeatherFetching, setIsWeatherFetching] = useState<boolean>(false);
 
   // Selected Active Project
@@ -141,6 +144,12 @@ export default function App() {
       const payersList = await getAllItems<Payer>('payers');
       const sdList = await getAllItems<SiteDiaryEntry>('site_diaries');
       const dwList = await getAllItems<DelayWeatherLog>('delay_weather_logs');
+      let expList: DailyExpense[] = [];
+      try {
+        expList = await getAllItems<DailyExpense>('daily_expenses');
+      } catch (err) {
+        console.warn('daily_expenses store might not exist yet', err);
+      }
 
       // Automatically keep the Tezu project data and remove known legacy projects (Skyline Heights & Commercial Plaza)
       // while allowing any new user-created projects to be retained safely.
@@ -181,6 +190,9 @@ export default function App() {
 
           const deletedDelays = dwList.filter(d => d.projectId === p.id);
           await deleteItems('delay_weather_logs', deletedDelays.map(x => x.id));
+
+          const deletedExpenses = expList.filter(e => e.projectId === p.id);
+          await deleteItems('daily_expenses', deletedExpenses.map(x => x.id));
         }
 
         const remainingProjects = pList.filter(p => !projectsToDelete.some(pd => pd.id === p.id));
@@ -193,6 +205,7 @@ export default function App() {
         const remainingGst = gstList.filter(g => !projectsToDelete.some(pd => pd.id === g.projectId));
         const remainingDiaries = sdList.filter(d => !projectsToDelete.some(pd => pd.id === d.projectId));
         const remainingDelays = dwList.filter(d => !projectsToDelete.some(pd => pd.id === d.projectId));
+        const remainingExpenses = expList.filter(e => !projectsToDelete.some(pd => pd.id === e.projectId));
 
         setProjects(remainingProjects);
         setLabours(lList);
@@ -206,6 +219,7 @@ export default function App() {
         setPayers(payersList);
         setSiteDiaries(remainingDiaries);
         setDelayWeatherLogs(remainingDelays);
+        setDailyExpenses(remainingExpenses);
 
         if (remainingProjects.length > 0) {
           setActiveProjectId(remainingProjects[0].id);
@@ -225,6 +239,7 @@ export default function App() {
         setPayers(payersList);
         setSiteDiaries(sdList);
         setDelayWeatherLogs(dwList);
+        setDailyExpenses(expList);
 
         if (pList.length > 0) {
           setActiveProjectId(pList[0].id);
@@ -611,6 +626,33 @@ export default function App() {
   };
 
   // ----------------------------------------------------
+  // Daily Expense & Misc Transaction operations
+  // ----------------------------------------------------
+  const handleAddDailyExpense = async (exp: DailyExpense) => {
+    await putItem('daily_expenses', exp);
+    setDailyExpenses(prev => [...prev, exp]);
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Added daily expense outlay');
+    }
+  };
+
+  const handleUpdateDailyExpense = async (exp: DailyExpense) => {
+    await putItem('daily_expenses', exp);
+    setDailyExpenses(prev => prev.map(item => item.id === exp.id ? exp : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated daily expense outlay');
+    }
+  };
+
+  const handleDeleteDailyExpense = async (id: string) => {
+    await deleteItem('daily_expenses', id);
+    setDailyExpenses(prev => prev.filter(item => item.id !== id));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Deleted daily expense outlay');
+    }
+  };
+
+  // ----------------------------------------------------
   // Site Diary operations
   // ----------------------------------------------------
   const handleAddSiteDiary = async (sd: SiteDiaryEntry) => {
@@ -682,6 +724,7 @@ export default function App() {
       await clearStore('gst_records');
       await clearStore('site_diaries');
       await clearStore('delay_weather_logs');
+      await clearStore('daily_expenses');
 
       // Populate database using ultra-fast bulk operations
       await putItems('projects', backupData.projects || []);
@@ -695,6 +738,7 @@ export default function App() {
       await putItems('gst_records', backupData.gstRecords || []);
       await putItems('site_diaries', backupData.siteDiaries || []);
       await putItems('delay_weather_logs', backupData.delayWeatherLogs || []);
+      await putItems('daily_expenses', backupData.dailyExpenses || []);
 
       // Reload
       setProjects(backupData.projects || []);
@@ -708,6 +752,7 @@ export default function App() {
       setGstRecords(backupData.gstRecords || []);
       setSiteDiaries(backupData.siteDiaries || []);
       setDelayWeatherLogs(backupData.delayWeatherLogs || []);
+      setDailyExpenses(backupData.dailyExpenses || []);
 
       if (backupData.projects && backupData.projects.length > 0) {
         setActiveProjectId(backupData.projects[0].id);
@@ -734,6 +779,7 @@ export default function App() {
       await clearStore('hotel_advances');
       await clearStore('food_logs');
       await clearStore('gst_records');
+      await clearStore('daily_expenses');
 
       setProjects([]);
       setLabours([]);
@@ -744,6 +790,7 @@ export default function App() {
       setHotelAdvances([]);
       setFoodLogs([]);
       setGstRecords([]);
+      setDailyExpenses([]);
       setActiveProjectId(null);
     } catch (error) {
       console.error('Reset database failed:', error);
@@ -1015,6 +1062,21 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setActiveTab('expenses')}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
+              activeTab === 'expenses'
+                ? 'bg-slate-900 text-white'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <span className="flex items-center gap-2.5">
+              <Receipt className="w-4 h-4 text-emerald-500" />
+              Daily Expenses & Misc
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+          </button>
+
+          <button
             onClick={() => setActiveTab('gst')}
             className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
               activeTab === 'gst'
@@ -1074,6 +1136,7 @@ export default function App() {
               materials={materials}
               foodLogs={foodLogs}
               gstRecords={gstRecords}
+              dailyExpenses={dailyExpenses}
               activeProjectId={activeProjectId}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}
@@ -1103,6 +1166,17 @@ export default function App() {
               onAddLabour={handleAddLabour}
               onUpdateLabour={handleUpdateLabour}
               onDeleteLabour={handleDeleteLabour}
+              activeProject={activeProject}
+              attendanceRecords={attendanceRecords}
+              advanceRecords={advanceRecords}
+              paymentRecords={paymentRecords}
+              foodLogs={foodLogs}
+              payers={payers}
+              onAddAdvance={handleAddAdvance}
+              onRecordPayment={handleRecordPayment}
+              onDeleteAdvance={handleDeleteAdvance}
+              onDeletePayment={handleDeletePayment}
+              foodCalculationStartDate={foodCalculationStartDate}
             />
           )}
 
@@ -1117,6 +1191,7 @@ export default function App() {
               onAddAdvance={handleAddAdvance}
               onDeleteAdvance={handleDeleteAdvance}
               onAddPayer={handleAddPayer}
+              onUpdatePayer={handleUpdatePayer}
               onDeletePayer={handleDeletePayer}
               onUpdateLabour={handleUpdateLabour}
             />
@@ -1160,7 +1235,9 @@ export default function App() {
               hotelAdvances={hotelAdvances}
               foodLogs={foodLogs}
               payers={payers}
+              dailyExpenses={dailyExpenses}
               onImportBackup={handleImportBackup}
+              foodCalculationStartDate={foodCalculationStartDate}
             />
           )}
 
@@ -1177,6 +1254,18 @@ export default function App() {
               onDeleteFoodLog={handleDeleteFoodLog}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}
+            />
+          )}
+
+          {activeTab === 'expenses' && (
+            <DailyExpensesTracker
+              activeProject={activeProject}
+              labours={labours}
+              payers={payers}
+              dailyExpenses={dailyExpenses}
+              onAddDailyExpense={handleAddDailyExpense}
+              onUpdateDailyExpense={handleUpdateDailyExpense}
+              onDeleteDailyExpense={handleDeleteDailyExpense}
             />
           )}
 
@@ -1222,6 +1311,7 @@ export default function App() {
               materials={materials}
               hotelAdvances={hotelAdvances}
               foodLogs={foodLogs}
+              dailyExpenses={dailyExpenses}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}
             />

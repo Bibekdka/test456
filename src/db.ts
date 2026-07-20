@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog } from './types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
 
 const DB_NAME = 'ConstructionManagerDB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 export function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -59,6 +59,9 @@ export function initDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains('delay_weather_logs')) {
         db.createObjectStore('delay_weather_logs', { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains('daily_expenses')) {
+        db.createObjectStore('daily_expenses', { keyPath: 'id' });
       }
     };
   });
@@ -475,5 +478,53 @@ export async function seedSampleDataIfEmpty() {
   ];
   for (const dw of initialDelayWeatherLogs) {
     await putItem('delay_weather_logs', dw);
+  }
+
+  // 12. Seed Daily Expenses & Misc Transactions
+  const initialDailyExpenses: DailyExpense[] = [
+    {
+      id: 'exp-1',
+      projectId: 'tezu-toilet-block-repair',
+      date: '2026-02-10',
+      category: 'labour_expense',
+      subCategory: 'tea_snacks',
+      amount: 350,
+      description: 'Morning tea and biscuits for workers on foundation shift',
+      payerId: 'p-supervisor'
+    },
+    {
+      id: 'exp-2',
+      projectId: 'tezu-toilet-block-repair',
+      date: '2026-02-12',
+      category: 'labour_expense',
+      subCategory: 'medical',
+      amount: 450,
+      description: 'First-aid band-aids and antiseptic purchase for site medical kit',
+      labourId: 'l-babul-dey',
+      payerId: 'p-supervisor'
+    },
+    {
+      id: 'exp-3',
+      projectId: 'tezu-toilet-block-repair',
+      date: '2026-02-14',
+      category: 'misc_transaction',
+      subCategory: 'transport',
+      amount: 1200,
+      description: 'Auto-rickshaw fare to transport heavy plumbing tools from local store',
+      payerId: 'p-cashier'
+    },
+    {
+      id: 'exp-4',
+      projectId: 'tezu-toilet-block-repair',
+      date: '2026-02-15',
+      category: 'misc_transaction',
+      subCategory: 'stationery',
+      amount: 250,
+      description: 'Site logbooks, attendance registers, and marker pens purchase',
+      payerId: 'p-cashier'
+    }
+  ];
+  for (const exp of initialDailyExpenses) {
+    await putItem('daily_expenses', exp);
   }
 }

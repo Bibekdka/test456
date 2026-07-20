@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Labour, Attendance, Material, FoodLog, GstRecord, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
 import { 
   Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
   TrendingUp, Users, Truck, Utensils, Percent, CircleDollarSign, 
@@ -13,6 +13,7 @@ interface DashboardProps {
   materials: Material[];
   foodLogs: FoodLog[];
   gstRecords: GstRecord[];
+  dailyExpenses: DailyExpense[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
   onAddProject: (project: Project) => void;
@@ -31,6 +32,7 @@ export default function Dashboard({
   materials,
   foodLogs,
   gstRecords,
+  dailyExpenses,
   activeProjectId,
   onSelectProject,
   onAddProject,
@@ -161,7 +163,12 @@ export default function Dashboard({
     const gstPaid = pGst.filter(g => g.type === 'paid').reduce((sum, g) => sum + g.gstAmount, 0);
     const gstClaimed = pGst.filter(g => g.type === 'claimed').reduce((sum, g) => sum + g.gstAmount, 0);
 
-    const totalSpent = labourWages + materialCost + foodCost;
+    // Daily Expenses and Misc
+    const dailyExpensesCost = (dailyExpenses || [])
+      .filter(e => e.projectId === pId)
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    const totalSpent = labourWages + materialCost + foodCost + dailyExpensesCost;
     const remainingBudget = project.budget - totalSpent;
 
     return {
@@ -170,6 +177,7 @@ export default function Dashboard({
       foodCost,
       gstPaid,
       gstClaimed,
+      dailyExpensesCost,
       totalSpent,
       remainingBudget
     };
@@ -182,6 +190,7 @@ export default function Dashboard({
   let overallFoodCost = 0;
   let overallGstPaid = 0;
   let overallGstClaimed = 0;
+  let overallDailyExpenses = 0;
   let overallSpent = 0;
 
   projects.forEach(p => {
@@ -192,6 +201,7 @@ export default function Dashboard({
     overallFoodCost += metrics.foodCost;
     overallGstPaid += metrics.gstPaid;
     overallGstClaimed += metrics.gstClaimed;
+    overallDailyExpenses += metrics.dailyExpensesCost;
     overallSpent += metrics.totalSpent;
   });
 
@@ -436,6 +446,58 @@ export default function Dashboard({
           >
             Use {useAutoFoodCalc ? 'Manual' : 'Auto'}
           </button>
+        </div>
+      </div>
+
+      {/* Dynamic Wages & Food Analytics Hub */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
+          <div className="space-y-1">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <Utensils className="w-4 h-4 text-indigo-600" />
+              Wages & Food Outlays Comparison Hub
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Comparative overview highlighting payroll outlays with food cost deductions vs separate expenses.
+            </p>
+          </div>
+          <span className="inline-block text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-100 font-mono self-start sm:self-auto">
+            {useAutoFoodCalc ? "Auto Mode: ₹100/day Present" : "Manual Mode: Meal Logs"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white border border-slate-200 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+            <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400 block">Gross Wages Earned (No Food)</span>
+            <div className="text-base font-bold text-slate-800 font-mono">
+              ₹{overallLabourWages.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <span className="text-[10px] text-slate-500 block leading-tight">Total raw worker earnings before any meal deductions are processed.</span>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+            <span className="text-[9px] uppercase tracking-wider font-semibold text-slate-400 block">Total Food Cost</span>
+            <div className="text-base font-bold text-rose-600 font-mono">
+              ₹{overallFoodCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <span className="text-[10px] text-slate-500 block leading-tight">Total catering/hotel food expenses accrued across all registered workers.</span>
+          </div>
+
+          <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+            <span className="text-[9px] uppercase tracking-wider font-semibold text-emerald-800 block">Net Wages (Food Deducted)</span>
+            <div className="text-base font-bold text-emerald-700 font-mono">
+              ₹{Math.max(0, overallLabourWages - overallFoodCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <span className="text-[10px] text-emerald-600 block leading-tight">Net payout obligation if workers bear their own food/boarding charges.</span>
+          </div>
+
+          <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-3.5 space-y-1.5 shadow-2xs">
+            <span className="text-[9px] uppercase tracking-wider font-semibold text-indigo-800 block">Combined Expense (Wages + Food)</span>
+            <div className="text-base font-bold text-indigo-700 font-mono">
+              ₹{(overallLabourWages + overallFoodCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <span className="text-[10px] text-indigo-600 block leading-tight">Total actual cash outlay if you provide complimentary boarding on top of standard wages.</span>
+          </div>
         </div>
       </div>
 
