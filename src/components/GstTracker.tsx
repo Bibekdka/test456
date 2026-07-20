@@ -16,6 +16,7 @@ import {
   Edit,
   X
 } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 interface GstTrackerProps {
   activeProject: Project | null;
@@ -39,6 +40,12 @@ export default function GstTracker({
 
   // Editing State
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+
+  // Deletion confirm state
+  const [recordToDelete, setRecordToDelete] = useState<GstRecord | null>(null);
+
+  // Form validation inline error state
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Form State
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -106,6 +113,15 @@ export default function GstTracker({
     setGstType(rec.type);
     setDate(rec.date);
     setNotes(rec.notes || '');
+    setFormError(null);
+
+    // Scroll smoothly to the invoice form container
+    setTimeout(() => {
+      const element = document.getElementById('gst-invoice-form');
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 80);
   };
 
   const cancelEdit = () => {
@@ -118,20 +134,23 @@ export default function GstTracker({
     setGstType('paid');
     setDate(new Date().toISOString().split('T')[0]);
     setNotes('');
+    setFormError(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!invoiceNo.trim() || !partyName.trim() || !amount) {
-      alert('Invoice Number, Party Name, and Taxable Value are required.');
+      setFormError('Invoice Number, Party Name, and Taxable Value are required.');
       return;
     }
 
     const taxableVal = parseFloat(amount);
     if (isNaN(taxableVal) || taxableVal <= 0) {
-      alert('Please enter a valid taxable amount.');
+      setFormError('Please enter a valid taxable amount (greater than ₹0).');
       return;
     }
+
+    setFormError(null);
 
     // Standard Indian GST amount calculation
     const calculatedGst = parseFloat((taxableVal * (gstRate / 100)).toFixed(2));
@@ -265,13 +284,40 @@ export default function GstTracker({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Form to Log New GST Invoice */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div 
+          id="gst-invoice-form"
+          className={`border rounded-xl p-5 shadow-xs space-y-4 transition-all duration-300 ${
+            editingRecordId 
+              ? 'bg-indigo-50/20 border-indigo-400 ring-4 ring-indigo-500/10' 
+              : 'bg-white border-slate-200'
+          }`}
+        >
+          {editingRecordId && (
+            <div className="bg-indigo-600 text-white rounded-lg px-3 py-2 text-[10px] font-bold tracking-wide uppercase flex items-center justify-between animate-pulse">
+              <span>ACTIVE EDITING MODE</span>
+              <button 
+                type="button" 
+                onClick={cancelEdit}
+                className="text-indigo-200 hover:text-white font-semibold cursor-pointer"
+              >
+                Clear/Reset
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5">
             <Receipt className="w-4 h-4 text-slate-500" />
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
               {editingRecordId ? 'Edit GST Invoice' : 'Log GST Invoice'}
             </h4>
           </div>
+
+          {formError && (
+            <div className="bg-rose-50 border border-rose-100 text-rose-800 rounded-lg p-2.5 flex items-start gap-1.5 text-[11px] animate-in fade-in slide-in-from-top-1 duration-150">
+              <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+              <span>{formError}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div className="grid grid-cols-2 gap-3">
@@ -588,11 +634,7 @@ export default function GstTracker({
                               <Edit className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm(`Are you sure you want to delete invoice ${rec.invoiceNo}?`)) {
-                                  onDeleteGstRecord(rec.id);
-                                }
-                              }}
+                              onClick={() => setRecordToDelete(rec)}
                               className="text-slate-400 hover:text-rose-600 p-1 rounded-md hover:bg-rose-50 transition cursor-pointer"
                               title="Delete invoice entry"
                             >
@@ -609,6 +651,23 @@ export default function GstTracker({
           )}
         </div>
       </div>
+
+      {/* Elegant, fully iframe-compatible custom ConfirmModal */}
+      <ConfirmModal
+        isOpen={recordToDelete !== null}
+        onClose={() => setRecordToDelete(null)}
+        onConfirm={() => {
+          if (recordToDelete) {
+            onDeleteGstRecord(recordToDelete.id);
+            setRecordToDelete(null);
+          }
+        }}
+        title="Confirm Invoice Deletion"
+        message={`Are you sure you want to delete invoice "${recordToDelete?.invoiceNo || ''}"?\nThis action will permanently delete the record and automatically adjust your cumulative input credits and tax liability positions.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        type="danger"
+      />
     </div>
   );
 }

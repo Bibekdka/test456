@@ -733,6 +733,7 @@ export default function App() {
       await clearStore('site_diaries');
       await clearStore('delay_weather_logs');
       await clearStore('daily_expenses');
+      await clearStore('payers');
 
       // Populate database using ultra-fast bulk operations
       await putItems('projects', backupData.projects || []);
@@ -747,8 +748,9 @@ export default function App() {
       await putItems('site_diaries', backupData.siteDiaries || []);
       await putItems('delay_weather_logs', backupData.delayWeatherLogs || []);
       await putItems('daily_expenses', backupData.dailyExpenses || []);
+      await putItems('payers', backupData.payers || []);
 
-      // Reload
+      // Reload state
       setProjects(backupData.projects || []);
       setLabours(backupData.labours || []);
       setAttendanceRecords(backupData.attendanceRecords || []);
@@ -761,6 +763,7 @@ export default function App() {
       setSiteDiaries(backupData.siteDiaries || []);
       setDelayWeatherLogs(backupData.delayWeatherLogs || []);
       setDailyExpenses(backupData.dailyExpenses || []);
+      setPayers(backupData.payers || []);
 
       if (backupData.projects && backupData.projects.length > 0) {
         setActiveProjectId(backupData.projects[0].id);
@@ -787,23 +790,16 @@ export default function App() {
       await clearStore('hotel_advances');
       await clearStore('food_logs');
       await clearStore('gst_records');
+      await clearStore('site_diaries');
+      await clearStore('delay_weather_logs');
       await clearStore('daily_expenses');
+      await clearStore('payers');
 
-      setProjects([]);
-      setLabours([]);
-      setAttendanceRecords([]);
-      setAdvanceRecords([]);
-      setPaymentRecords([]);
-      setMaterials([]);
-      setHotelAdvances([]);
-      setFoodLogs([]);
-      setGstRecords([]);
-      setDailyExpenses([]);
-      setActiveProjectId(null);
+      // Re-seed and load standard clean sample database
+      await loadDatabase();
     } catch (error) {
       console.error('Reset database failed:', error);
       alert('Failed to reset database.');
-    } finally {
       setLoading(false);
     }
   };
