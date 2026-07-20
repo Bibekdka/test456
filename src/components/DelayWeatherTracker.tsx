@@ -5,12 +5,13 @@
 
 import React, { useState } from 'react';
 import { Project, DelayWeatherLog } from '../types';
-import { CloudSun, CloudRain, Thermometer, Timer, AlertTriangle, Activity, Calendar, ListFilter, CheckCircle2, Trash2, Plus, Sun, Cloud, Snowflake, Flame, Zap, Compass, RefreshCw } from 'lucide-react';
+import { CloudSun, CloudRain, Thermometer, Timer, AlertTriangle, Activity, Calendar, ListFilter, CheckCircle2, Trash2, Plus, Sun, Cloud, Snowflake, Flame, Zap, Compass, RefreshCw, Pencil } from 'lucide-react';
 
 interface DelayWeatherTrackerProps {
   activeProject: Project | null;
   delayWeatherLogs: DelayWeatherLog[];
   onAddDelayWeatherLog: (log: DelayWeatherLog) => void;
+  onUpdateDelayWeatherLog: (log: DelayWeatherLog) => void;
   onDeleteDelayWeatherLog: (id: string) => void;
   onFetchWeather?: (p: Project) => Promise<void>;
   isWeatherFetching?: boolean;
@@ -20,6 +21,7 @@ export default function DelayWeatherTracker({
   activeProject,
   delayWeatherLogs,
   onAddDelayWeatherLog,
+  onUpdateDelayWeatherLog,
   onDeleteDelayWeatherLog,
   onFetchWeather,
   isWeatherFetching = false,
@@ -27,6 +29,7 @@ export default function DelayWeatherTracker({
   const [showForm, setShowForm] = useState(false);
   const [filterDelayOnly, setFilterDelayOnly] = useState(false);
   const [weatherFilter, setWeatherFilter] = useState<string>('all');
+  const [editingLog, setEditingLog] = useState<DelayWeatherLog | null>(null);
 
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -56,22 +59,49 @@ export default function DelayWeatherTracker({
     .filter(l => l.projectId === activeProject.id)
     .sort((a, b) => b.date.localeCompare(a.date));
 
+  const handleEditClick = (log: DelayWeatherLog) => {
+    setEditingLog(log);
+    setDate(log.date);
+    setWeather(log.weather);
+    setTemperature(log.temperature || '25');
+    setIsDelay(log.isDelay);
+    setDelayHours(log.delayHours !== undefined ? log.delayHours.toString() : '');
+    setDelayReason(log.delayReason || 'rain');
+    setDelayNotes(log.delayNotes || '');
+    setShowForm(true);
+    document.getElementById('delay-tracker-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const newLog: DelayWeatherLog = {
-      id: 'dw_' + Math.random().toString(36).substr(2, 9),
-      projectId: activeProject.id,
-      date,
-      weather,
-      temperature: temperature ? temperature : undefined,
-      isDelay,
-      delayHours: isDelay && delayHours ? Number(delayHours) : undefined,
-      delayReason: isDelay ? delayReason : undefined,
-      delayNotes: isDelay && delayNotes ? delayNotes : undefined,
-    };
+    if (editingLog) {
+      const updatedLog: DelayWeatherLog = {
+        ...editingLog,
+        date,
+        weather,
+        temperature: temperature ? temperature : undefined,
+        isDelay,
+        delayHours: isDelay && delayHours ? Number(delayHours) : undefined,
+        delayReason: isDelay ? delayReason : undefined,
+        delayNotes: isDelay && delayNotes ? delayNotes : undefined,
+      };
+      onUpdateDelayWeatherLog(updatedLog);
+    } else {
+      const newLog: DelayWeatherLog = {
+        id: 'dw_' + Math.random().toString(36).substr(2, 9),
+        projectId: activeProject.id,
+        date,
+        weather,
+        temperature: temperature ? temperature : undefined,
+        isDelay,
+        delayHours: isDelay && delayHours ? Number(delayHours) : undefined,
+        delayReason: isDelay ? delayReason : undefined,
+        delayNotes: isDelay && delayNotes ? delayNotes : undefined,
+      };
+      onAddDelayWeatherLog(newLog);
+    }
 
-    onAddDelayWeatherLog(newLog);
     setShowForm(false);
     resetForm();
   };
@@ -84,6 +114,7 @@ export default function DelayWeatherTracker({
     setDelayHours('');
     setDelayReason('rain');
     setDelayNotes('');
+    setEditingLog(null);
   };
 
   // Weather Icon and Color Maps
@@ -229,7 +260,9 @@ export default function DelayWeatherTracker({
       {/* Form Log Panel */}
       {showForm && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2">Record Weather & Disruption Warnings</h3>
+          <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2">
+            {editingLog ? 'Edit Weather & Disruption Record' : 'Record Weather & Disruption Warnings'}
+          </h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Select Date</label>
@@ -342,7 +375,7 @@ export default function DelayWeatherTracker({
                 type="submit"
                 className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm font-medium cursor-pointer"
               >
-                Save Log Record
+                {editingLog ? 'Update Log Record' : 'Save Log Record'}
               </button>
             </div>
           </form>
@@ -463,17 +496,26 @@ export default function DelayWeatherTracker({
                     )}
                   </td>
                   <td className="px-5 py-4 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => {
-                        if (confirm('Delete this weather/delay log record?')) {
-                          onDeleteDelayWeatherLog(log.id);
-                        }
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                      title="Delete log"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => handleEditClick(log)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                        title="Edit weather/delay log"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete this weather/delay log record?')) {
+                            onDeleteDelayWeatherLog(log.id);
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                        title="Delete log"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

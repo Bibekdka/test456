@@ -621,6 +621,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateSiteDiary = async (sd: SiteDiaryEntry) => {
+    await putItem('site_diaries', sd);
+    setSiteDiaries(prev => prev.map(item => item.id === sd.id ? sd : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated site diary entry');
+    }
+  };
+
   const handleDeleteSiteDiary = async (id: string) => {
     await deleteItem('site_diaries', id);
     setSiteDiaries(prev => prev.filter(item => item.id !== id));
@@ -637,6 +645,14 @@ export default function App() {
     setDelayWeatherLogs(prev => [...prev, dw]);
     if (navigator.onLine) {
       triggerSync('Auto-sync: Added weather/delay log');
+    }
+  };
+
+  const handleUpdateDelayWeatherLog = async (dw: DelayWeatherLog) => {
+    await putItem('delay_weather_logs', dw);
+    setDelayWeatherLogs(prev => prev.map(item => item.id === dw.id ? dw : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated weather/delay log');
     }
   };
 
@@ -1179,6 +1195,7 @@ export default function App() {
               siteDiaries={siteDiaries}
               attendanceRecords={attendanceRecords}
               onAddSiteDiary={handleAddSiteDiary}
+              onUpdateSiteDiary={handleUpdateSiteDiary}
               onDeleteSiteDiary={handleDeleteSiteDiary}
             />
           )}
@@ -1188,6 +1205,7 @@ export default function App() {
               activeProject={activeProject}
               delayWeatherLogs={delayWeatherLogs}
               onAddDelayWeatherLog={handleAddDelayWeatherLog}
+              onUpdateDelayWeatherLog={handleUpdateDelayWeatherLog}
               onDeleteDelayWeatherLog={handleDeleteDelayWeatherLog}
               onFetchWeather={fetchWeatherForProject}
               isWeatherFetching={isWeatherFetching}

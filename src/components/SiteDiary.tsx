@@ -5,13 +5,14 @@
 
 import React, { useState } from 'react';
 import { Project, SiteDiaryEntry, Attendance } from '../types';
-import { BookOpen, Plus, Search, Calendar, User, HardHat, FileText, Trash2, ShieldCheck, HelpCircle, ClipboardCheck, Printer, X } from 'lucide-react';
+import { BookOpen, Plus, Search, Calendar, User, HardHat, FileText, Trash2, ShieldCheck, HelpCircle, ClipboardCheck, Printer, X, Pencil } from 'lucide-react';
 
 interface SiteDiaryProps {
   activeProject: Project | null;
   siteDiaries: SiteDiaryEntry[];
   attendanceRecords: Attendance[];
   onAddSiteDiary: (diary: SiteDiaryEntry) => void;
+  onUpdateSiteDiary: (diary: SiteDiaryEntry) => void;
   onDeleteSiteDiary: (id: string) => void;
 }
 
@@ -20,11 +21,13 @@ export default function SiteDiary({
   siteDiaries,
   attendanceRecords,
   onAddSiteDiary,
+  onUpdateSiteDiary,
   onDeleteSiteDiary,
 }: SiteDiaryProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [printDiary, setPrintDiary] = useState<SiteDiaryEntry | null>(null);
+  const [editingDiary, setEditingDiary] = useState<SiteDiaryEntry | null>(null);
 
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -66,22 +69,47 @@ export default function SiteDiary({
     setManpowerCount(Math.ceil(computedManpower).toString());
   };
 
+  const handleEditClick = (diary: SiteDiaryEntry) => {
+    setEditingDiary(diary);
+    setDate(diary.date);
+    setSupervisorName(diary.supervisorName);
+    setWorkDone(diary.workDone);
+    setManpowerCount(diary.manpowerCount !== undefined ? diary.manpowerCount.toString() : '');
+    setSafetyLog(diary.safetyLog || '');
+    setRemarks(diary.remarks || '');
+    setShowAddForm(true);
+    document.getElementById('site-diary-section')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!workDone) return;
 
-    const newDiary: SiteDiaryEntry = {
-      id: 'diary_' + Math.random().toString(36).substr(2, 9),
-      projectId: activeProject.id,
-      date,
-      supervisorName: supervisorName || 'Site Supervisor',
-      workDone,
-      manpowerCount: manpowerCount ? Number(manpowerCount) : undefined,
-      safetyLog: safetyLog || undefined,
-      remarks: remarks || undefined,
-    };
+    if (editingDiary) {
+      const updatedDiary: SiteDiaryEntry = {
+        ...editingDiary,
+        date,
+        supervisorName: supervisorName || 'Site Supervisor',
+        workDone,
+        manpowerCount: manpowerCount ? Number(manpowerCount) : undefined,
+        safetyLog: safetyLog || undefined,
+        remarks: remarks || undefined,
+      };
+      onUpdateSiteDiary(updatedDiary);
+    } else {
+      const newDiary: SiteDiaryEntry = {
+        id: 'diary_' + Math.random().toString(36).substr(2, 9),
+        projectId: activeProject.id,
+        date,
+        supervisorName: supervisorName || 'Site Supervisor',
+        workDone,
+        manpowerCount: manpowerCount ? Number(manpowerCount) : undefined,
+        safetyLog: safetyLog || undefined,
+        remarks: remarks || undefined,
+      };
+      onAddSiteDiary(newDiary);
+    }
 
-    onAddSiteDiary(newDiary);
     setShowAddForm(false);
     resetForm();
   };
@@ -93,6 +121,7 @@ export default function SiteDiary({
     setManpowerCount('');
     setSafetyLog('');
     setRemarks('');
+    setEditingDiary(null);
   };
 
   // Search filter
@@ -169,7 +198,9 @@ export default function SiteDiary({
       {/* Log Entry Form */}
       {showAddForm && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2">Record Site Diary Progress</h3>
+          <h3 className="font-semibold text-slate-800 border-b border-slate-100 pb-2">
+            {editingDiary ? 'Edit Site Diary Entry' : 'Record Site Diary Progress'}
+          </h3>
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Date</label>
@@ -268,7 +299,7 @@ export default function SiteDiary({
                 type="submit"
                 className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-lg text-sm font-medium cursor-pointer"
               >
-                Save Site Log
+                {editingDiary ? 'Update Site Log' : 'Save Site Log'}
               </button>
             </div>
           </form>
@@ -345,6 +376,14 @@ export default function SiteDiary({
                   >
                     <Printer className="w-3.5 h-3.5" />
                     <span>Print Report</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleEditClick(diary)}
+                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                    title="Edit log entry"
+                  >
+                    <Pencil className="w-4 h-4" />
                   </button>
 
                   <button
