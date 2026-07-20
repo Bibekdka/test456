@@ -136,7 +136,15 @@ export default function Dashboard({
     // Food Cost (Manual Logs vs. Auto ₹100/day Present since joining till today/leftDate)
     const manualFoodCost = pFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
     const pLabourIds = new Set(pAttendance.map(a => a.labourId));
-    const projectLabours = labours.filter(l => pLabourIds.has(l.id) || l.status === 'active');
+    const projectLabours = labours.filter(l => {
+      if (pLabourIds.has(l.id)) return true;
+      if (l.status === 'active') return true;
+      if (l.status === 'left' && l.joinedDate) {
+        const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
+        if (leftDate >= project.startDate) return true;
+      }
+      return false;
+    });
     const autoFoodCost = projectLabours.reduce((sum, l) => {
       const { cost } = getAttendanceFoodDaysAndCost(
         l,

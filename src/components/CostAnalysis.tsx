@@ -70,7 +70,15 @@ export default function CostAnalysis({
   // Food costs (The actual food logs amount vs. Auto ₹100/day Present since joining till today or leftDate)
   const totalManualFoodCost = projectFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
   const projectLabourIds = new Set(projectAttendance.map(a => a.labourId));
-  const projectLabours = labours.filter(l => projectLabourIds.has(l.id) || l.status === 'active');
+  const projectLabours = labours.filter(l => {
+    if (projectLabourIds.has(l.id)) return true;
+    if (l.status === 'active') return true;
+    if (l.status === 'left' && l.joinedDate) {
+      const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
+      if (leftDate >= activeProject.startDate) return true;
+    }
+    return false;
+  });
   const totalAutoFoodCost = projectLabours.reduce((sum, l) => {
     const { cost } = getAttendanceFoodDaysAndCost(
       l,

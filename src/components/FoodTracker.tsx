@@ -62,7 +62,15 @@ export default function FoodTracker({
       .filter(a => a.projectId === activeProject.id)
       .map(a => a.labourId)
   );
-  const projectLabours = labours.filter(l => projectLabourIds.has(l.id) || l.status === 'active');
+  const projectLabours = labours.filter(l => {
+    if (projectLabourIds.has(l.id)) return true;
+    if (l.status === 'active') return true;
+    if (l.status === 'left' && l.joinedDate) {
+      const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
+      if (leftDate >= activeProject.startDate) return true;
+    }
+    return false;
+  });
 
   // Financial calculations
   const totalAdvances = projectAdvances.reduce((sum, a) => sum + a.amount, 0);
@@ -115,6 +123,19 @@ export default function FoodTracker({
     if (mealsCount <= 0) {
       alert('Meals count must be at least 1.');
       return;
+    }
+
+    const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
+    if (selectedLabour) {
+      const joinDate = selectedLabour.joinedDate || activeProject.startDate;
+      const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
+        ? selectedLabour.leftDate
+        : new Date().toISOString().split('T')[0];
+
+      if (foodDate < joinDate || foodDate > endDate) {
+        alert(`Error: The selected meal date (${foodDate}) falls outside this worker's served period (${joinDate} to ${endDate}). Please choose a valid date during their service.`);
+        return;
+      }
     }
 
     // 100 Rs per meal per person
@@ -291,7 +312,7 @@ export default function FoodTracker({
                   <tr className="border-b border-slate-200 bg-slate-50/50 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
                     <th className="px-4 py-3">Worker Name</th>
                     <th className="px-4 py-3">Wage Rate</th>
-                    <th className="px-4 py-3">Joining Date</th>
+                    <th className="px-4 py-3">Serving Period / Dates</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3 text-right">Days Present</th>
                     <th className="px-4 py-3 text-right">Total Cost (₹100/Day)</th>
@@ -308,11 +329,30 @@ export default function FoodTracker({
                     );
                     const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
                     const joinDate = l.joinedDate || defaultJoin;
+                    const endDateStr = l.status === 'left' && l.leftDate ? l.leftDate : new Date().toISOString().split('T')[0];
+                    
+                    // Compute calendar days served
+                    const startD = new Date(joinDate);
+                    const endD = new Date(endDateStr);
+                    startD.setHours(0, 0, 0, 0);
+                    endD.setHours(0, 0, 0, 0);
+                    const diff = endD.getTime() - startD.getTime();
+                    const servedDays = diff < 0 ? 0 : Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
+
                     return (
                       <tr key={l.id} className="border-b border-slate-100 hover:bg-slate-50/30 text-slate-700">
                         <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
                         <td className="px-4 py-3 text-slate-500">₹{l.perDayWage}/day</td>
-                        <td className="px-4 py-3 font-mono text-slate-600">{joinDate}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-mono text-slate-700 text-xs">
+                              {joinDate} {l.status === 'left' ? `→ ${l.leftDate}` : '→ Present'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {servedDays} Calendar {servedDays === 1 ? 'Day' : 'Days'} Served
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           {l.status === 'active' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
@@ -356,12 +396,43 @@ export default function FoodTracker({
                   required
                 >
                   <option value="">-- Choose Labour --</option>
-                  {activeLabours.map((l) => (
+                  {projectLabours.map((l) => (
                     <option key={l.id} value={l.id}>
-                      {l.name} (Wage: ₹{l.perDayWage})
+                      {l.name} {l.status === 'left' ? `(Left on ${l.leftDate || 'N/A'})` : '(Active)'} - Wage: ₹{l.perDayWage}
                     </option>
                   ))}
                 </select>
+
+                {(() => {
+                  const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
+                  if (!selectedLabour) return null;
+                  const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
+                  const joinDate = selectedLabour.joinedDate || defaultJoin;
+                  const endDate = selectedLabour.status === 'left' && selectedLabour.leftDate
+                    ? selectedLabour.leftDate
+                    : 'Present';
+                  return (
+                    <div className="mt-2 p-2 bg-slate-100 rounded-lg border border-slate-200 text-[10px] text-slate-600 space-y-1">
+                      <p className="font-semibold text-slate-700">Worker Serving Period Info:</p>
+                      <div className="flex justify-between">
+                        <span>Status:</span>
+                        <span className={`font-bold ${selectedLabour.status === 'active' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {selectedLabour.status === 'active' ? 'Active' : 'Left Work'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Joined:</span>
+                        <span className="font-mono font-bold">{joinDate}</span>
+                      </div>
+                      {selectedLabour.status === 'left' && (
+                        <div className="flex justify-between">
+                          <span>Left Project:</span>
+                          <span className="font-mono font-bold text-rose-600">{endDate}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Meals Count & Price Note */}
