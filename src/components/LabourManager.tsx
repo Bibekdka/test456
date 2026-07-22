@@ -51,14 +51,17 @@ export default function LabourManager({
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingLabour, setEditingLabour] = useState<Labour | null>(null);
   const [labourToDelete, setLabourToDelete] = useState<Labour | null>(null);
+  const [deletingLedgerId, setDeletingLedgerId] = useState<string | null>(null);
 
-  // Form State for Adding/Editing Labourer
+  // Form State for Adding/Editing Labourer / Contractor / Staff
   const [name, setName] = useState('');
   const [perDayWage, setPerDayWage] = useState('');
   const [contact, setContact] = useState('');
   const [status, setStatus] = useState<'active' | 'left'>('active');
   const [leftDate, setLeftDate] = useState('');
   const [joinedDate, setJoinedDate] = useState('');
+  const [role, setRole] = useState<'worker' | 'contractor' | 'staff' | 'other'>('worker');
+  const [isSalaryApplicable, setIsSalaryApplicable] = useState(true);
 
   // Form State for Recording Advances/Payments
   const [selectedLabourId, setSelectedLabourId] = useState('');
@@ -75,9 +78,11 @@ export default function LabourManager({
 
   const openAddForm = () => {
     setName('');
-    setPerDayWage('');
+    setPerDayWage('500');
     setContact('');
     setStatus('active');
+    setRole('worker');
+    setIsSalaryApplicable(true);
     setLeftDate('');
     setJoinedDate(new Date().toISOString().split('T')[0]);
     setEditingLabour(null);
@@ -88,9 +93,11 @@ export default function LabourManager({
   const openEditForm = (l: Labour) => {
     setEditingLabour(l);
     setName(l.name);
-    setPerDayWage(l.perDayWage.toString());
+    setPerDayWage(l.perDayWage ? l.perDayWage.toString() : '0');
     setContact(l.contact);
     setStatus(l.status);
+    setRole(l.role || 'worker');
+    setIsSalaryApplicable(l.isSalaryApplicable !== undefined ? l.isSalaryApplicable : (l.perDayWage > 0));
     setLeftDate(l.leftDate || '');
     setJoinedDate(l.joinedDate || new Date().toISOString().split('T')[0]);
     setShowAddForm(true);
@@ -99,10 +106,10 @@ export default function LabourManager({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !perDayWage) return;
+    if (!name.trim()) return;
 
-    const wage = Number(perDayWage);
-    if (isNaN(wage) || wage <= 0) return;
+    const wage = (!isSalaryApplicable || perDayWage === '') ? 0 : Number(perDayWage);
+    if (isNaN(wage) || wage < 0) return;
 
     const labourData: Labour = {
       id: editingLabour ? editingLabour.id : 'l_' + Math.random().toString(36).substr(2, 9),
@@ -110,16 +117,18 @@ export default function LabourManager({
       perDayWage: wage,
       contact: contact.trim() || 'N/A',
       status,
+      role,
+      isSalaryApplicable: isSalaryApplicable && wage > 0,
       leftDate: status === 'left' ? (leftDate || new Date().toISOString().split('T')[0]) : undefined,
       joinedDate: joinedDate || undefined,
     };
 
     if (editingLabour) {
       onUpdateLabour(labourData);
-      alert(`Worker profile updated for ${labourData.name}`);
+      alert(`Profile updated for ${labourData.name}`);
     } else {
       onAddLabour(labourData);
-      alert(`Worker ${labourData.name} registered successfully`);
+      alert(`Person ${labourData.name} registered successfully`);
     }
 
     setShowAddForm(false);
@@ -348,30 +357,73 @@ export default function LabourManager({
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Worker Name</label>
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Category / Role</label>
+              <select
+                value={role}
+                onChange={(e) => {
+                  const newRole = e.target.value as any;
+                  setRole(newRole);
+                  if (newRole === 'contractor' || newRole === 'staff' || newRole === 'other') {
+                    setIsSalaryApplicable(false);
+                    setPerDayWage('0');
+                  } else {
+                    setIsSalaryApplicable(true);
+                    if (perDayWage === '0' || !perDayWage) setPerDayWage('500');
+                  }
+                }}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold text-slate-800"
+              >
+                <option value="worker">👷 Regular Worker / Daily Wage</option>
+                <option value="contractor">🏗️ Subcontractor / Main Contractor</option>
+                <option value="staff">👔 Site Supervisor / Staff</option>
+                <option value="other">👤 Other Guest / Personnel</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Full Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Ramesh Kumar"
+                placeholder="e.g. Ramesh Kumar / Sharma Constructions"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900"
                 required
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Per Day Wage (Rs.)</label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Daily Wage (Rs.)</label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={isSalaryApplicable}
+                    onChange={(e) => {
+                      setIsSalaryApplicable(e.target.checked);
+                      if (!e.target.checked) setPerDayWage('0');
+                    }}
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-800 h-3.5 w-3.5"
+                  />
+                  <span>Receives Daily Salary</span>
+                </label>
+              </div>
               <div className="relative">
                 <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-mono">₹</span>
                 <input
                   type="number"
                   value={perDayWage}
                   onChange={(e) => setPerDayWage(e.target.value)}
-                  placeholder="e.g. 500"
-                  className="w-full border border-slate-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono"
-                  required
+                  disabled={!isSalaryApplicable}
+                  placeholder={isSalaryApplicable ? "e.g. 500" : "0 (No Salary)"}
+                  className={`w-full border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900 font-mono ${
+                    !isSalaryApplicable ? 'bg-slate-100 text-slate-400 border-slate-200' : 'border-slate-200 text-slate-800'
+                  }`}
                 />
               </div>
+              {!isSalaryApplicable && (
+                <p className="text-[10px] text-slate-400 italic">No daily wages accrued. Person will be listed for hotel meals & advances.</p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -515,7 +567,20 @@ export default function LabourManager({
                   <div className="space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-semibold text-slate-800 text-base">{l.name}</h3>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h3 className="font-semibold text-slate-800 text-base">{l.name}</h3>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            l.role === 'contractor'
+                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              : l.role === 'staff'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : l.role === 'other'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
+                            {l.role === 'contractor' ? '🏗️ Contractor' : l.role === 'staff' ? '👔 Staff' : l.role === 'other' ? '👤 Personnel' : '👷 Worker'}
+                          </span>
+                        </div>
                         <p className="text-slate-400 text-xs flex items-center gap-1 mt-0.5 font-mono">
                           <Phone className="w-3 h-3" /> {l.contact}
                         </p>
@@ -549,8 +614,10 @@ export default function LabourManager({
 
                     <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <p className="text-slate-400 font-semibold uppercase tracking-wider text-[9px]">Standard Wage</p>
-                        <p className="font-semibold text-slate-700 font-mono text-sm mt-0.5">₹{l.perDayWage}/day</p>
+                        <p className="text-slate-400 font-semibold uppercase tracking-wider text-[9px]">Salary Status</p>
+                        <p className="font-semibold text-slate-700 font-mono text-xs mt-0.5">
+                          {l.perDayWage > 0 ? `₹${l.perDayWage}/day` : 'No Daily Salary'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-slate-400 font-semibold uppercase tracking-wider text-[9px]">Labour Status</p>
@@ -651,7 +718,7 @@ export default function LabourManager({
                       <option value="">-- Choose registered worker --</option>
                       {labours.map(l => (
                         <option key={l.id} value={l.id}>
-                          {l.name} ({l.status === 'active' ? 'Active' : 'Left'}) - ₹{l.perDayWage}/day
+                          {l.name} [{l.role === 'contractor' ? 'Contractor' : l.role === 'staff' ? 'Staff' : l.role === 'other' ? 'Personnel' : 'Worker'}] ({l.status === 'active' ? 'Active' : 'Left'}) {l.perDayWage > 0 ? `- ₹${l.perDayWage}/day` : '- No Daily Salary'}
                         </option>
                       ))}
                     </select>
@@ -847,22 +914,37 @@ export default function LabourManager({
                               <span className="text-slate-600 text-[10px]">{item.notes}</span>
                             </td>
                             <td className="py-2 px-3 text-center">
-                              <button
-                                onClick={() => {
-                                  if (confirm("Are you sure you want to delete this financial ledger record? This will permanently modify worker balance statements!")) {
-                                    if (item.type === 'advance' && onDeleteAdvance) {
-                                      onDeleteAdvance(item.id);
-                                    } else if (item.type === 'payout' && onDeletePayment) {
-                                      onDeletePayment(item.id);
-                                    }
-                                    alert("Ledger entry deleted.");
-                                  }
-                                }}
-                                className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded transition cursor-pointer"
-                                title="Delete transaction"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {deletingLedgerId === item.id ? (
+                                <div className="flex items-center justify-center gap-1 animate-fade-in">
+                                  <button
+                                    onClick={() => {
+                                      if (item.type === 'advance' && onDeleteAdvance) {
+                                        onDeleteAdvance(item.id);
+                                      } else if (item.type === 'payout' && onDeletePayment) {
+                                        onDeletePayment(item.id);
+                                      }
+                                      setDeletingLedgerId(null);
+                                    }}
+                                    className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingLedgerId(null)}
+                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setDeletingLedgerId(item.id)}
+                                  className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 p-1 rounded transition cursor-pointer"
+                                  title="Delete transaction"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

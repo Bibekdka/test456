@@ -84,6 +84,9 @@ export default function DailyExpensesTracker({
   // Receipt Modal/Lightbox states
   const [viewingReceipt, setViewingReceipt] = useState<{ url: string; name: string } | null>(null);
 
+  // Deleting state
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!activeProject) {
@@ -733,26 +736,42 @@ export default function DailyExpensesTracker({
 
                       {/* Actions */}
                       <td className="px-5 py-3.5 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleEditClick(exp)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
-                            title="Edit transaction details"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm('Are you absolutely sure you want to delete this expense/transaction record? This action cannot be undone.')) {
+                        {deletingExpenseId === exp.id ? (
+                          <div className="flex items-center justify-end gap-1.5 animate-fade-in">
+                            <button
+                              onClick={() => {
                                 onDeleteDailyExpense(exp.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="Delete transaction log"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                                setDeletingExpenseId(null);
+                              }}
+                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold cursor-pointer transition shadow-xs"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setDeletingExpenseId(null)}
+                              className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs font-medium cursor-pointer transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleEditClick(exp)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                              title="Edit transaction details"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingExpenseId(exp.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              title="Delete transaction log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );

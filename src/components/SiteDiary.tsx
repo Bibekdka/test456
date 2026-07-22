@@ -28,6 +28,7 @@ export default function SiteDiary({
   const [searchQuery, setSearchQuery] = useState('');
   const [printDiary, setPrintDiary] = useState<SiteDiaryEntry | null>(null);
   const [editingDiary, setEditingDiary] = useState<SiteDiaryEntry | null>(null);
+  const [deletingDiaryId, setDeletingDiaryId] = useState<string | null>(null);
 
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -386,17 +387,33 @@ export default function SiteDiary({
                     <Pencil className="w-4 h-4" />
                   </button>
 
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this site diary entry permanently? This action is irreversible.')) {
-                        onDeleteSiteDiary(diary.id);
-                      }
-                    }}
-                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                    title="Delete log"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {deletingDiaryId === diary.id ? (
+                    <div className="flex items-center gap-1.5 animate-fade-in">
+                      <button
+                        onClick={() => {
+                          onDeleteSiteDiary(diary.id);
+                          setDeletingDiaryId(null);
+                        }}
+                        className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold cursor-pointer transition shadow-xs"
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        onClick={() => setDeletingDiaryId(null)}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs font-medium cursor-pointer transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeletingDiaryId(diary.id)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                      title="Delete log"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 

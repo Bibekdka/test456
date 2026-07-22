@@ -30,6 +30,7 @@ export default function DelayWeatherTracker({
   const [filterDelayOnly, setFilterDelayOnly] = useState(false);
   const [weatherFilter, setWeatherFilter] = useState<string>('all');
   const [editingLog, setEditingLog] = useState<DelayWeatherLog | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
 
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -496,26 +497,42 @@ export default function DelayWeatherTracker({
                     )}
                   </td>
                   <td className="px-5 py-4 text-right whitespace-nowrap">
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        onClick={() => handleEditClick(log)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
-                        title="Edit weather/delay log"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('Delete this weather/delay log record?')) {
+                    {deletingLogId === log.id ? (
+                      <div className="flex items-center justify-end gap-1.5 animate-fade-in">
+                        <button
+                          onClick={() => {
                             onDeleteDelayWeatherLog(log.id);
-                          }
-                        }}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                        title="Delete log"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                            setDeletingLogId(null);
+                          }}
+                          className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold cursor-pointer transition shadow-xs"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setDeletingLogId(null)}
+                          className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md text-xs font-medium cursor-pointer transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleEditClick(log)}
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                          title="Edit weather/delay log"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeletingLogId(log.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                          title="Delete log"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

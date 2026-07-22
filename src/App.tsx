@@ -762,6 +762,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateFoodLog = async (fl: FoodLog) => {
+    await putItem('food_logs', fl);
+    setFoodLogs(prev => prev.map(item => item.id === fl.id ? fl : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated meal deduction');
+    }
+  };
+
   const handleDeleteFoodLog = async (id: string) => {
     await deleteItem('food_logs', id);
     setFoodLogs(prev => prev.filter(item => item.id !== id));
@@ -1416,6 +1424,7 @@ export default function App() {
               onAddHotelAdvance={handleAddHotelAdvance}
               onDeleteHotelAdvance={handleDeleteHotelAdvance}
               onAddFoodLog={handleAddFoodLog}
+              onUpdateFoodLog={handleUpdateFoodLog}
               onDeleteFoodLog={handleDeleteFoodLog}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}

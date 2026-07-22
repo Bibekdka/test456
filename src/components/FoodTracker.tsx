@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
-import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X } from 'lucide-react';
 
 interface FoodTrackerProps {
   activeProject: Project | null;
@@ -11,6 +11,7 @@ interface FoodTrackerProps {
   onAddHotelAdvance: (advance: HotelAdvance) => Promise<void>;
   onDeleteHotelAdvance: (id: string) => Promise<void>;
   onAddFoodLog: (log: FoodLog) => Promise<void>;
+  onUpdateFoodLog?: (log: FoodLog) => Promise<void>;
   onDeleteFoodLog: (id: string) => Promise<void>;
   foodCalculationStartDate: string;
   onFoodCalculationStartDateChange: (date: string) => void;
@@ -25,13 +26,20 @@ export default function FoodTracker({
   onAddHotelAdvance,
   onDeleteHotelAdvance,
   onAddFoodLog,
+  onUpdateFoodLog,
   onDeleteFoodLog,
   foodCalculationStartDate,
   onFoodCalculationStartDateChange,
 }: FoodTrackerProps) {
-  // Filters and Forms State
-  const [activeSubTab, setActiveSubTab] = useState<'meals' | 'advances' | 'auto-food'>('auto-food');
-  const [useAutoFoodCalc, setUseAutoFoodCalc] = useState(true);
+  // Filters and Forms State - Manual Mess Flow default
+  const [activeSubTab, setActiveSubTab] = useState<'meals' | 'advances' | 'auto-food'>('meals');
+  const [useAutoFoodCalc, setUseAutoFoodCalc] = useState(false);
+  
+  // Quick Daily Mess Logger State
+  const [quickMessDate, setQuickMessDate] = useState(new Date().toISOString().split('T')[0]);
+  const [quickMealNotes, setQuickMealNotes] = useState('Daily Mess');
+  const [quickMealCost, setQuickMealCost] = useState(100);
+  const [selectedQuickPersons, setSelectedQuickPersons] = useState<string[]>([]);
   
   // Hotel Advance Form
   const [advanceAmount, setAdvanceAmount] = useState('');
@@ -46,6 +54,42 @@ export default function FoodTracker({
   const [mealNotes, setMealNotes] = useState('Lunch');
   const [isVisitor, setIsVisitor] = useState(false);
   const [visitorName, setVisitorName] = useState('');
+  const [isLongTerm, setIsLongTerm] = useState(false);
+  const [longTermEndDate, setLongTermEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [mealsPerDay, setMealsPerDay] = useState(1);
+
+  // Custom inline deletion and edit states
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
+  const [deletingAdvanceId, setDeletingAdvanceId] = useState<string | null>(null);
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editLabourId, setEditLabourId] = useState('');
+  const [editMealsCount, setEditMealsCount] = useState(1);
+  const [editCost, setEditCost] = useState(100);
+  const [editNotes, setEditNotes] = useState('');
+
+  const handleStartEdit = (log: FoodLog) => {
+    setEditingLogId(log.id);
+    setEditDate(log.date);
+    setEditLabourId(log.labourId);
+    setEditMealsCount(log.mealsCount);
+    setEditCost(log.cost || 100);
+    setEditNotes(log.notes || '');
+  };
+
+  const handleSaveEdit = async (log: FoodLog) => {
+    if (onUpdateFoodLog) {
+      await onUpdateFoodLog({
+        ...log,
+        date: editDate,
+        labourId: editLabourId,
+        mealsCount: Math.max(1, editMealsCount),
+        cost: editCost,
+        notes: editNotes
+      });
+    }
+    setEditingLogId(null);
+  };
 
   if (!activeProject) {
     return (
@@ -97,6 +141,19 @@ export default function FoodTracker({
   const remainingBalance = totalAdvances - totalFoodCost;
   const activeLabours = labours.filter(l => l.status === 'active');
 
+  // Dynamic stay calculation for guests
+  let visitorDaysCount = 0;
+  if (isVisitor && isLongTerm) {
+    const start = new Date(foodDate);
+    const end = new Date(longTermEndDate);
+    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+      const diffTime = end.getTime() - start.getTime();
+      visitorDaysCount = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
+    }
+  }
+  const displayMealsCount = (isVisitor && isLongTerm) ? (visitorDaysCount * mealsPerDay) : mealsCount;
+  const displayTotalCost = displayMealsCount * 100;
+
   const handleAddAdvanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!advanceAmount || parseFloat(advanceAmount) <= 0 || !hotelName.trim()) {
@@ -121,13 +178,10 @@ export default function FoodTracker({
 
   const handleAddFoodLogSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mealsCount <= 0) {
-      alert('Meals count must be at least 1.');
-      return;
-    }
 
     let finalLabourId = selectedLabourId;
     let finalNotes = mealNotes.trim() || undefined;
+    let finalMealsCount = mealsCount;
 
     if (isVisitor) {
       if (!visitorName.trim()) {
@@ -135,9 +189,42 @@ export default function FoodTracker({
         return;
       }
       finalLabourId = 'visitor';
-      const detail = mealNotes.trim() ? ` (${mealNotes.trim()})` : '';
-      finalNotes = `Visitor: ${visitorName.trim()}${detail}`;
+
+      if (isLongTerm) {
+        const start = new Date(foodDate);
+        const end = new Date(longTermEndDate);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          alert('Please enter valid start and end dates.');
+          return;
+        }
+        if (longTermEndDate < foodDate) {
+          alert('End date cannot be before the start date.');
+          return;
+        }
+        const diffTime = end.getTime() - start.getTime();
+        const daysCount = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
+        
+        if (mealsPerDay <= 0) {
+          alert('Meals per day must be at least 1.');
+          return;
+        }
+
+        finalMealsCount = daysCount * mealsPerDay;
+        const detail = mealNotes.trim() ? ` - ${mealNotes.trim()}` : '';
+        finalNotes = `Visitor: ${visitorName.trim()} (Long-term: ${foodDate} to ${longTermEndDate}, ${daysCount} days, ${mealsPerDay} meals/day${detail})`;
+      } else {
+        if (mealsCount <= 0) {
+          alert('Meals count must be at least 1.');
+          return;
+        }
+        const detail = mealNotes.trim() ? ` (${mealNotes.trim()})` : '';
+        finalNotes = `Visitor: ${visitorName.trim()}${detail}`;
+      }
     } else {
+      if (mealsCount <= 0) {
+        alert('Meals count must be at least 1.');
+        return;
+      }
       if (!selectedLabourId) {
         alert('Please select a labour.');
         return;
@@ -166,7 +253,7 @@ export default function FoodTracker({
       labourId: finalLabourId,
       date: foodDate,
       cost: costPerMeal,
-      mealsCount: mealsCount,
+      mealsCount: finalMealsCount,
       notes: finalNotes
     };
 
@@ -175,7 +262,43 @@ export default function FoodTracker({
     setVisitorName('');
     setMealsCount(1);
     setMealNotes('Lunch');
+    setIsLongTerm(false);
+    setMealsPerDay(1);
     alert(isVisitor ? 'Visitor meal logged. 100 Rs per meal deducted from hotel advance balance.' : 'Labour meal logged. 100 Rs per meal deducted from hotel advance balance.');
+  };
+
+  const handleQuickLogMeal = async (personId: string, count: number = 1, notes: string = 'Daily Mess') => {
+    const newLog: FoodLog = {
+      id: 'food_' + Math.random().toString(36).substr(2, 9),
+      projectId: activeProject.id,
+      labourId: personId,
+      date: quickMessDate,
+      mealsCount: count,
+      cost: quickMealCost,
+      notes: notes
+    };
+    await onAddFoodLog(newLog);
+  };
+
+  const handleBatchLogMeals = async (count: number = 1) => {
+    if (selectedQuickPersons.length === 0) {
+      alert('Please select at least one person to log meals for.');
+      return;
+    }
+    for (const personId of selectedQuickPersons) {
+      const newLog: FoodLog = {
+        id: 'food_' + Math.random().toString(36).substr(2, 9),
+        projectId: activeProject.id,
+        labourId: personId,
+        date: quickMessDate,
+        mealsCount: count,
+        cost: quickMealCost,
+        notes: quickMealNotes
+      };
+      await onAddFoodLog(newLog);
+    }
+    alert(`Successfully logged ${count} meal(s) each for ${selectedQuickPersons.length} people on ${quickMessDate}.`);
+    setSelectedQuickPersons([]);
   };
 
   const getLabourName = (id: string, notes?: string) => {
@@ -187,7 +310,9 @@ export default function FoodTracker({
       return 'Visitor / Guest';
     }
     const l = labours.find(item => item.id === id);
-    return l ? l.name : 'Unknown';
+    if (!l) return 'Unknown';
+    const roleBadge = l.role === 'contractor' ? ' [Contractor]' : l.role === 'staff' ? ' [Staff]' : l.role === 'other' ? ' [Personnel]' : '';
+    return `${l.name}${roleBadge}`;
   };
 
   return (
@@ -197,28 +322,28 @@ export default function FoodTracker({
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Utensils className="w-5 h-5 text-indigo-600" />
-            Hotel Food Tab Manager
+            Hotel Food & Mess Tab Manager
           </h2>
-          <p className="text-xs text-slate-500">Track paid advances, log daily meals at Rs. 100 per person, and check balance.</p>
+          <p className="text-xs text-slate-500">Manual daily mess recording for workers, contractors, and staff with hotel advance tracking.</p>
         </div>
         <div className="flex bg-slate-100 rounded-lg p-1 text-xs font-semibold">
           <button
-            onClick={() => setActiveSubTab('auto-food')}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'auto-food' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
-          >
-            Auto Food (₹100/Day)
-          </button>
-          <button
             onClick={() => setActiveSubTab('meals')}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'meals' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
+            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'meals' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
           >
-            Meals Ledger
+            Daily Meals & Mess Log
           </button>
           <button
             onClick={() => setActiveSubTab('advances')}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'advances' ? 'bg-white shadow-xs text-slate-900' : 'text-slate-500 hover:text-slate-900'}`}
+            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'advances' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
           >
             Hotel Advances ({projectAdvances.length})
+          </button>
+          <button
+            onClick={() => setActiveSubTab('auto-food')}
+            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'auto-food' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+          >
+            Auto Calc (₹100/Day)
           </button>
         </div>
       </div>
@@ -404,54 +529,145 @@ export default function FoodTracker({
       )}
 
       {activeSubTab === 'meals' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Add Food Log Form */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-              <Plus className="w-4 h-4 text-indigo-600" />
-              Log Labour Meal
-            </h3>
-            <form onSubmit={handleAddFoodLogSubmit} className="space-y-4">
-              {/* Type Toggle: Labour vs Visitor */}
-              <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setIsVisitor(false)}
-                  className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${!isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  Regular Worker
-                </button>
-                <button
-                  type="button"
-                  id="add-visitor-meal-btn"
-                  onClick={() => setIsVisitor(true)}
-                  className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
-                >
-                  Visitor / Guest
-                </button>
+        <div className="space-y-6">
+          {/* Quick Daily Mess Sheet for Easy Manual Recording */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Utensils className="w-4.5 h-4.5 text-amber-500" />
+                  Quick Daily Mess Sheet
+                </h3>
+                <p className="text-xs text-slate-500">Easily log daily mess/meals for workers, contractors, staff, and personnel day-by-day in 1 click.</p>
               </div>
+              <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mess Date:</label>
+                <input
+                  type="date"
+                  value={quickMessDate}
+                  onChange={(e) => setQuickMessDate(e.target.value)}
+                  className="bg-white border border-slate-200 rounded px-2.5 py-1 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+            </div>
 
-              {!isVisitor ? (
-                /* Select Labour */
-                <div>
-                  <label htmlFor="food-labour" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Select Labour</label>
-                  <select
-                    id="food-labour"
-                    value={selectedLabourId}
-                    onChange={(e) => setSelectedLabourId(e.target.value)}
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                    required
+            {/* Quick Mess Grid of All Site Personnel */}
+            {projectLabours.length === 0 ? (
+              <p className="text-xs text-slate-400 py-4 text-center">No active workers or contractors registered for this site.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {projectLabours.map((person) => {
+                  const existingLogs = projectFoodLogs.filter(f => f.labourId === person.id && f.date === quickMessDate);
+                  const mealsLoggedToday = existingLogs.reduce((sum, log) => sum + log.mealsCount, 0);
+
+                  const roleTag = person.role === 'contractor'
+                    ? '🏗️ Contractor'
+                    : person.role === 'staff'
+                    ? '👔 Staff'
+                    : person.role === 'other'
+                    ? '👤 Personnel'
+                    : '👷 Worker';
+
+                  return (
+                    <div key={person.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col justify-between gap-2 hover:border-slate-300 transition">
+                      <div>
+                        <div className="flex justify-between items-start gap-1">
+                          <span className="font-bold text-xs text-slate-800 truncate" title={person.name}>{person.name}</span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                            person.role === 'contractor'
+                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              : person.role === 'staff'
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : person.role === 'other'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
+                            {roleTag}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-1 flex justify-between items-center">
+                          <span>Logged on {quickMessDate}:</span>
+                          <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] ${mealsLoggedToday > 0 ? 'bg-amber-100 text-amber-800' : 'text-slate-400'}`}>
+                            {mealsLoggedToday} {mealsLoggedToday === 1 ? 'Meal' : 'Meals'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200/60">
+                        <button
+                          type="button"
+                          onClick={() => handleQuickLogMeal(person.id, 1)}
+                          className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition text-center shadow-xs"
+                          title="Log 1 Meal (@ ₹100)"
+                        >
+                          +1 Meal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickLogMeal(person.id, 2)}
+                          className="bg-slate-800 hover:bg-slate-900 text-white py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition text-center shadow-xs"
+                          title="Log 2 Meals (@ ₹200)"
+                        >
+                          +2 Meals
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Add Food Log Form */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-600" />
+                Custom Single Meal Entry
+              </h3>
+              <form onSubmit={handleAddFoodLogSubmit} className="space-y-4">
+                {/* Type Toggle: Labour vs Visitor */}
+                <div className="flex bg-slate-100 p-1 rounded-lg text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setIsVisitor(false)}
+                    className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${!isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
                   >
-                    <option value="">-- Choose Labour --</option>
-                    {projectLabours.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.name} {l.status === 'left' ? `(Left on ${l.leftDate || 'N/A'})` : '(Active)'} - Wage: ₹{l.perDayWage}
-                      </option>
-                    ))}
-                  </select>
+                    Registered Personnel
+                  </button>
+                  <button
+                    type="button"
+                    id="add-visitor-meal-btn"
+                    onClick={() => setIsVisitor(true)}
+                    className={`flex-1 py-1 px-2.5 rounded-md text-center cursor-pointer transition ${isVisitor ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    Visitor / Guest
+                  </button>
+                </div>
 
-                  {(() => {
-                    const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
+                {!isVisitor ? (
+                  /* Select Labour / Contractor / Staff */
+                  <div className="space-y-3">
+                    <div>
+                      <label htmlFor="food-labour" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Select Person</label>
+                      <select
+                        id="food-labour"
+                        value={selectedLabourId}
+                        onChange={(e) => setSelectedLabourId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                        required
+                      >
+                        <option value="">-- Choose Worker / Contractor / Staff --</option>
+                        {projectLabours.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.name} [{l.role === 'contractor' ? 'Contractor' : l.role === 'staff' ? 'Staff' : l.role === 'other' ? 'Personnel' : 'Worker'}] {l.status === 'left' ? `(Left on ${l.leftDate || 'N/A'})` : '(Active)'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(() => {
+                      const selectedLabour = projectLabours.find(l => l.id === selectedLabourId);
                     if (!selectedLabour) return null;
                     const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
                     const joinDate = selectedLabour.joinedDate || defaultJoin;
@@ -482,60 +698,148 @@ export default function FoodTracker({
                   })()}
                 </div>
               ) : (
-                /* Visitor Name */
-                <div>
-                  <label htmlFor="visitor-name" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Visitor / Guest Name</label>
-                  <input
-                    type="text"
-                    id="visitor-name"
-                    value={visitorName}
-                    onChange={(e) => setVisitorName(e.target.value)}
-                    placeholder="e.g. Inspector, Client, Subcontractor"
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                    required
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Visitors do not need attendance logging and are charged at ₹100 per meal.</p>
+                /* Visitor Form Fields */
+                <div className="space-y-3">
+                  <div>
+                    <label htmlFor="visitor-name" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Visitor / Guest Name</label>
+                    <input
+                      type="text"
+                      id="visitor-name"
+                      value={visitorName}
+                      onChange={(e) => setVisitorName(e.target.value)}
+                      placeholder="e.g. Inspector, Client, Subcontractor"
+                      className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                      required
+                    />
+                  </div>
+
+                  {/* Checkbox: Long-term stay */}
+                  <div className="flex items-center gap-2 py-1">
+                    <input
+                      type="checkbox"
+                      id="is-long-term"
+                      checked={isLongTerm}
+                      onChange={(e) => setIsLongTerm(e.target.checked)}
+                      className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                    />
+                    <label htmlFor="is-long-term" className="text-xs text-slate-700 font-medium cursor-pointer select-none">
+                      Guest is staying for multiple days
+                    </label>
+                  </div>
                 </div>
               )}
 
-              {/* Meals Count & Price Note */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="meals-count" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Meals Count</label>
-                  <input
-                    type="number"
-                    id="meals-count"
-                    min="1"
-                    max="10"
-                    value={mealsCount}
-                    onChange={(e) => setMealsCount(parseInt(e.target.value) || 1)}
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                    required
-                  />
+              {/* Meals & Dates Fields based on Long Term stay option */}
+              {isVisitor && isLongTerm ? (
+                /* Long Term Fields */
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="meals-per-day" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Meals Per Day</label>
+                      <input
+                        type="number"
+                        id="meals-per-day"
+                        min="1"
+                        max="10"
+                        value={mealsPerDay}
+                        onChange={(e) => setMealsPerDay(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Rate</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 text-slate-600 text-xs rounded-lg p-2.5 font-semibold flex items-center">
+                        <IndianRupee className="w-3.5 h-3.5 inline text-slate-400 mr-0.5" /> 100 / meal
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="food-start-date" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Check-In Date</label>
+                      <div className="relative">
+                        <Calendar className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="date"
+                          id="food-start-date"
+                          value={foodDate}
+                          onChange={(e) => setFoodDate(e.target.value)}
+                          className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg pl-9 pr-2.5 py-2 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="food-end-date" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Check-Out Date</label>
+                      <div className="relative">
+                        <Calendar className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="date"
+                          id="food-end-date"
+                          value={longTermEndDate}
+                          onChange={(e) => setLongTermEndDate(e.target.value)}
+                          className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg pl-9 pr-2.5 py-2 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {visitorDaysCount > 0 && (
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-lg text-[11px] text-indigo-800 font-medium space-y-1">
+                      <div className="flex justify-between">
+                        <span>Stay Duration:</span>
+                        <span className="font-bold">{visitorDaysCount} Days</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total Meals:</span>
+                        <span className="font-bold">{displayMealsCount} Meals ({mealsPerDay}/day)</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Rate</label>
-                  <div className="w-full bg-slate-100 border border-slate-200 text-slate-600 text-xs rounded-lg p-2.5 font-semibold flex items-center">
-                    <IndianRupee className="w-3.5 h-3.5 inline text-slate-400 mr-0.5" /> 100 / meal
+              ) : (
+                /* Regular/Short Term Fields */
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="meals-count" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Meals Count</label>
+                      <input
+                        type="number"
+                        id="meals-count"
+                        min="1"
+                        max="10"
+                        value={mealsCount}
+                        onChange={(e) => setMealsCount(parseInt(e.target.value) || 1)}
+                        className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Rate</label>
+                      <div className="w-full bg-slate-100 border border-slate-200 text-slate-600 text-xs rounded-lg p-2.5 font-semibold flex items-center">
+                        <IndianRupee className="w-3.5 h-3.5 inline text-slate-400 mr-0.5" /> 100 / meal
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label htmlFor="food-date" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="date"
+                        id="food-date"
+                        value={foodDate}
+                        onChange={(e) => setFoodDate(e.target.value)}
+                        className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg pl-9 pr-2.5 py-2 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Meal Date */}
-              <div>
-                <label htmlFor="food-date" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Date</label>
-                <div className="relative">
-                  <Calendar className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
-                  <input
-                    type="date"
-                    id="food-date"
-                    value={foodDate}
-                    onChange={(e) => setFoodDate(e.target.value)}
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg pl-9 pr-2.5 py-2 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                    required
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Notes / Meal Type */}
               <div>
@@ -545,7 +849,7 @@ export default function FoodTracker({
                   id="meal-notes"
                   value={mealNotes}
                   onChange={(e) => setMealNotes(e.target.value)}
-                  placeholder="e.g. Lunch, Dinner, Breakfast"
+                  placeholder={isLongTerm ? "e.g. All Meals, Boarding & Food" : "e.g. Lunch, Dinner, Breakfast"}
                   className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
                 />
               </div>
@@ -554,7 +858,7 @@ export default function FoodTracker({
               <div className="bg-indigo-50/50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-900 flex justify-between items-center">
                 <span>Total deduction:</span>
                 <span className="font-bold text-sm flex items-center">
-                  <IndianRupee className="w-3.5 h-3.5 inline" /> {mealsCount * 100}
+                  <IndianRupee className="w-3.5 h-3.5 inline" /> {displayTotalCost.toLocaleString()}
                 </span>
               </div>
 
@@ -603,6 +907,94 @@ export default function FoodTracker({
                       .sort((a, b) => b.date.localeCompare(a.date))
                       .map((log) => {
                         const totalDeducted = log.mealsCount * log.cost;
+
+                        if (editingLogId === log.id) {
+                          return (
+                            <tr key={log.id} className="border-b border-indigo-200 bg-indigo-50/50 text-slate-800">
+                              <td className="px-3 py-2 font-mono">
+                                <input
+                                  type="date"
+                                  value={editDate}
+                                  onChange={(e) => setEditDate(e.target.value)}
+                                  className="bg-white border border-slate-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                                  required
+                                />
+                              </td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={editLabourId}
+                                  onChange={(e) => setEditLabourId(e.target.value)}
+                                  className="bg-white border border-slate-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500 max-w-[140px]"
+                                >
+                                  <option value="visitor">👤 Visitor / Guest</option>
+                                  {labours.map(l => (
+                                    <option key={l.id} value={l.id}>
+                                      {l.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="50"
+                                    value={editMealsCount}
+                                    onChange={(e) => setEditMealsCount(parseInt(e.target.value) || 1)}
+                                    className="w-16 bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono focus:ring-1 focus:ring-indigo-500"
+                                    required
+                                  />
+                                  <span className="text-[10px] text-slate-500">meals</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <div className="inline-flex items-center gap-1">
+                                  <span className="text-[10px] text-slate-400">@ ₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={editCost}
+                                    onChange={(e) => setEditCost(parseFloat(e.target.value) || 0)}
+                                    className="w-16 bg-white border border-slate-300 rounded px-2 py-1 text-xs font-mono text-right focus:ring-1 focus:ring-indigo-500"
+                                    required
+                                  />
+                                  <span className="font-bold text-xs text-indigo-900 ml-1">
+                                    = ₹{editMealsCount * editCost}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2">
+                                <input
+                                  type="text"
+                                  value={editNotes}
+                                  onChange={(e) => setEditNotes(e.target.value)}
+                                  placeholder="Notes..."
+                                  className="w-full bg-white border border-slate-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                                />
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => handleSaveEdit(log)}
+                                    className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition shadow-sm cursor-pointer"
+                                    title="Save changes"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingLogId(null)}
+                                    className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md transition cursor-pointer"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
                         return (
                           <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50/30 text-slate-700">
                             <td className="px-4 py-3 font-mono text-slate-600">{log.date}</td>
@@ -619,16 +1011,42 @@ export default function FoodTracker({
                               {log.notes || '—'}
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={async () => {
-                                  if (confirm('Are you sure you want to delete this food log? The amount will be refunded back to the hotel advance.')) {
-                                    await onDeleteFoodLog(log.id);
-                                  }
-                                }}
-                                className="p-1 text-slate-400 hover:text-red-600 rounded-md transition"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {deletingLogId === log.id ? (
+                                <div className="flex items-center justify-center gap-1.5 animate-fade-in">
+                                  <button
+                                    onClick={async () => {
+                                      await onDeleteFoodLog(log.id);
+                                      setDeletingLogId(null);
+                                    }}
+                                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingLogId(null)}
+                                    className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => handleStartEdit(log)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded-md transition cursor-pointer"
+                                    title="Edit meal log"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingLogId(log.id)}
+                                    className="p-1 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
+                                    title="Delete meal log"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
                             </td>
                           </tr>
                         );
@@ -639,6 +1057,7 @@ export default function FoodTracker({
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {activeSubTab === 'advances' && (
@@ -764,18 +1183,35 @@ export default function FoodTracker({
                           <td className="px-4 py-3 text-slate-500 italic max-w-[150px] truncate" title={adv.notes}>
                             {adv.notes || '—'}
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={async () => {
-                                if (confirm('Are you sure you want to delete this hotel advance? This will reduce the hotel balance.')) {
-                                  await onDeleteHotelAdvance(adv.id);
-                                }
-                              }}
-                              className="p-1 text-slate-400 hover:text-red-600 rounded-md transition"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
+                           <td className="px-4 py-3 text-center">
+                             {deletingAdvanceId === adv.id ? (
+                               <div className="flex items-center justify-center gap-1.5 animate-fade-in">
+                                 <button
+                                   onClick={async () => {
+                                     await onDeleteHotelAdvance(adv.id);
+                                     setDeletingAdvanceId(null);
+                                   }}
+                                   className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                 >
+                                   Confirm
+                                 </button>
+                                 <button
+                                   onClick={() => setDeletingAdvanceId(null)}
+                                   className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                 >
+                                   Cancel
+                                 </button>
+                               </div>
+                             ) : (
+                               <button
+                                 onClick={() => setDeletingAdvanceId(adv.id)}
+                                 className="p-1 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
+                                 title="Delete hotel advance"
+                                >
+                                 <Trash2 className="w-4 h-4" />
+                               </button>
+                             )}
+                           </td>
                         </tr>
                       ))}
                   </tbody>

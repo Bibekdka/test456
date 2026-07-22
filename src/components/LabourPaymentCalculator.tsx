@@ -54,6 +54,8 @@ export default function LabourPaymentCalculator({
   const [payNotes, setPayNotes] = useState('');
 
   const [expandedLabourId, setExpandedLabourId] = useState<string | null>(null);
+  const [deletingLedgerItemId, setDeletingLedgerItemId] = useState<string | null>(null);
+  const [deletingPayoutId, setDeletingPayoutId] = useState<string | null>(null);
 
   if (!activeProject) {
     return (
@@ -227,16 +229,10 @@ export default function LabourPaymentCalculator({
 
   const handleDeleteItem = (item: LedgerItem) => {
     if (item.type === 'payout') {
-      if (confirm(`Are you sure you want to delete this wage payout of ₹${item.amount} recorded on ${item.date}?`)) {
-        onDeletePayment(item.id);
-      }
+      onDeletePayment(item.id);
     } else {
       if (onDeleteAdvance) {
-        if (confirm(`Are you sure you want to delete this cash advance of ₹${item.amount} taken on ${item.date}?`)) {
-          onDeleteAdvance(item.id);
-        }
-      } else {
-        alert('Cannot delete advances from here. Please go to the Attendance & Advances tab to manage and delete advances.');
+        onDeleteAdvance(item.id);
       }
     }
   };
@@ -413,16 +409,36 @@ export default function LabourPaymentCalculator({
                                             </div>
                                             <div className="flex items-center gap-1.5">
                                               <span className="font-bold text-emerald-600">₹{pay.amountPaid}</span>
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  if (confirm('Delete this payout record?')) onDeletePayment(pay.id);
-                                                }}
-                                                className="text-slate-300 hover:text-rose-600 transition"
-                                                title="Delete payout"
-                                              >
-                                                <Trash2 className="w-3 h-3" />
-                                              </button>
+                                              {deletingPayoutId === pay.id ? (
+                                                <div className="flex items-center gap-1 animate-fade-in">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      onDeletePayment(pay.id);
+                                                      setDeletingPayoutId(null);
+                                                    }}
+                                                    className="px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                                  >
+                                                    Confirm
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setDeletingPayoutId(null)}
+                                                    className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                                  >
+                                                    Cancel
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setDeletingPayoutId(pay.id)}
+                                                  className="text-slate-300 hover:text-rose-600 transition p-0.5 cursor-pointer"
+                                                  title="Delete payout"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              )}
                                             </div>
                                           </div>
                                         ))}
@@ -768,14 +784,36 @@ export default function LabourPaymentCalculator({
                           )}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteItem(item)}
-                            className="text-slate-300 hover:text-rose-600 transition p-1 cursor-pointer"
-                            title="Delete this entry from books"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {deletingLedgerItemId === item.id ? (
+                            <div className="flex items-center justify-center gap-1 animate-fade-in">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleDeleteItem(item);
+                                  setDeletingLedgerItemId(null);
+                                }}
+                                className="px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingLedgerItemId(null)}
+                                className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeletingLedgerItemId(item.id)}
+                              className="text-slate-300 hover:text-rose-600 transition p-1 cursor-pointer"
+                              title="Delete this entry from books"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

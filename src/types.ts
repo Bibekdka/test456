@@ -18,6 +18,8 @@ export interface Project {
   expenseBudget?: number;
 }
 
+export type PersonRole = 'worker' | 'contractor' | 'staff' | 'other';
+
 export interface Labour {
   id: string;
   name: string;
@@ -26,9 +28,11 @@ export interface Labour {
   status: 'active' | 'left'; // can be set to 'left' if they leave in the middle
   leftDate?: string; // date they left work
   joinedDate?: string; // date they joined work
+  role?: PersonRole; // 'worker' | 'contractor' | 'staff' | 'other'
+  isSalaryApplicable?: boolean;
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home' | 'pending';
+export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home' | 'pending' | 'rest';
 
 export interface Attendance {
   id: string;
@@ -230,11 +234,11 @@ export function getAttendanceFoodDaysAndCost(
     days = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
 
-  // Count the number of days the labour was marked as present or half_day in their attendance record
+  // Count the number of days the labour was marked as present, half_day, or rest in their attendance record
   const onSiteRecordsCount = attendanceRecords.filter(
     a => a.labourId === labour.id && 
          a.projectId === projectId && 
-         (a.status === 'present' || a.status === 'half_day') && 
+         (a.status === 'present' || a.status === 'half_day' || a.status === 'rest') && 
          a.date >= finalStartDateStr && 
          a.date <= endDateStr
   ).length;
