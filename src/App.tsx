@@ -1414,6 +1414,7 @@ export default function App() {
               onAddFoodLog={handleAddFoodLog}
               onUpdateFoodLog={handleUpdateFoodLog}
               onDeleteFoodLog={handleDeleteFoodLog}
+              onUpdateLabour={handleUpdateLabour}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}
             />

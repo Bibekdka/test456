@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
 import { generateId } from '../utils/id';
-import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays } from 'lucide-react';
+import CustomerMealCalendar from './CustomerMealCalendar';
 
 interface FoodTrackerProps {
   activeProject: Project | null;
@@ -14,6 +15,7 @@ interface FoodTrackerProps {
   onAddFoodLog: (log: FoodLog) => Promise<void>;
   onUpdateFoodLog?: (log: FoodLog) => Promise<void>;
   onDeleteFoodLog: (id: string) => Promise<void>;
+  onUpdateLabour?: (labour: Labour) => Promise<void>;
   foodCalculationStartDate: string;
   onFoodCalculationStartDateChange: (date: string) => void;
 }
@@ -29,11 +31,12 @@ export default function FoodTracker({
   onAddFoodLog,
   onUpdateFoodLog,
   onDeleteFoodLog,
+  onUpdateLabour,
   foodCalculationStartDate,
   onFoodCalculationStartDateChange,
 }: FoodTrackerProps) {
   // Filters and Forms State - Manual Mess Flow default
-  const [activeSubTab, setActiveSubTab] = useState<'meals' | 'advances' | 'auto-food'>('meals');
+  const [activeSubTab, setActiveSubTab] = useState<'meals' | 'calendar' | 'advances' | 'auto-food'>('meals');
   const [useAutoFoodCalc, setUseAutoFoodCalc] = useState(false);
   
   // Quick Daily Mess Logger State
@@ -327,12 +330,19 @@ export default function FoodTracker({
           </h2>
           <p className="text-xs text-slate-500">Manual daily mess recording for workers, contractors, and staff with hotel advance tracking.</p>
         </div>
-        <div className="flex bg-slate-100 rounded-lg p-1 text-xs font-semibold">
+        <div className="flex bg-slate-100 rounded-lg p-1 text-xs font-semibold flex-wrap gap-1">
           <button
             onClick={() => setActiveSubTab('meals')}
             className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'meals' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
           >
             Daily Meals & Mess Log
+          </button>
+          <button
+            onClick={() => setActiveSubTab('calendar')}
+            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${activeSubTab === 'calendar' ? 'bg-white shadow-xs text-indigo-700 font-extrabold' : 'text-slate-500 hover:text-slate-900'}`}
+          >
+            <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+            Meal Calendar (Green/Red/Grey)
           </button>
           <button
             onClick={() => setActiveSubTab('advances')}
@@ -527,6 +537,18 @@ export default function FoodTracker({
             )}
           </div>
         </div>
+      )}
+
+      {activeSubTab === 'calendar' && activeProject && (
+        <CustomerMealCalendar
+          activeProject={activeProject}
+          labours={labours}
+          foodLogs={foodLogs}
+          onAddFoodLog={onAddFoodLog}
+          onUpdateFoodLog={onUpdateFoodLog}
+          onDeleteFoodLog={onDeleteFoodLog}
+          onUpdateLabour={onUpdateLabour}
+        />
       )}
 
       {activeSubTab === 'meals' && (
