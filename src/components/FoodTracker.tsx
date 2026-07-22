@@ -707,6 +707,22 @@ export default function FoodTracker({
                   const existingLogs = projectFoodLogs.filter(f => f.labourId === person.id && f.date === quickMessDate);
                   const mealsLoggedToday = existingLogs.reduce((sum, log) => sum + log.mealsCount, 0);
 
+                  // Calculate total days eaten and current month stats for this person
+                  const personLogs = projectFoodLogs.filter(f => f.labourId === person.id && f.mealsCount > 0);
+                  const totalDaysEaten = new Set(personLogs.map(f => f.date)).size;
+                  const totalMealsEaten = personLogs.reduce((sum, f) => sum + f.mealsCount, 0);
+
+                  const currentMonthKey = (quickMessDate || new Date().toISOString().split('T')[0]).substring(0, 7);
+                  const monthLogs = personLogs.filter(f => f.date.startsWith(currentMonthKey));
+                  const monthDaysEaten = new Set(monthLogs.map(f => f.date)).size;
+                  const monthMeals = monthLogs.reduce((sum, f) => sum + f.mealsCount, 0);
+                  const monthCost = monthLogs.reduce((sum, f) => sum + (f.mealsCount * (f.cost || 100)), 0);
+
+                  const [yStr, mStr] = currentMonthKey.split('-');
+                  const monthLabel = !isNaN(Number(yStr)) && !isNaN(Number(mStr))
+                    ? new Date(Number(yStr), Number(mStr) - 1, 1).toLocaleString('default', { month: 'short' })
+                    : 'Month';
+
                   const roleTag = person.role === 'contractor'
                     ? '🏗️ Contractor'
                     : person.role === 'staff'
@@ -716,8 +732,8 @@ export default function FoodTracker({
                     : '👷 Worker';
 
                   return (
-                    <div key={person.id} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col justify-between gap-2 hover:border-slate-300 transition">
-                      <div>
+                    <div key={person.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between gap-2 hover:border-indigo-300 hover:shadow-xs transition">
+                      <div className="space-y-1.5">
                         <div className="flex justify-between items-start gap-1">
                           <span className="font-bold text-xs text-slate-800 truncate" title={person.name}>{person.name}</span>
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
@@ -732,30 +748,42 @@ export default function FoodTracker({
                             {roleTag}
                           </span>
                         </div>
-                        <div className="text-[10px] text-slate-500 mt-1 flex justify-between items-center">
+
+                        {/* Logged Today */}
+                        <div className="text-[10px] text-slate-500 flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-100">
                           <span>Logged on {quickMessDate}:</span>
-                          <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[10px] ${mealsLoggedToday > 0 ? 'bg-amber-100 text-amber-800' : 'text-slate-400'}`}>
+                          <span className={`font-mono font-bold px-1.5 py-0.2 rounded text-[10px] ${mealsLoggedToday > 0 ? 'bg-amber-100 text-amber-800' : 'text-slate-400 bg-slate-100'}`}>
                             {mealsLoggedToday} {mealsLoggedToday === 1 ? 'Meal' : 'Meals'}
                           </span>
                         </div>
+
+                        {/* Total Days Eaten & Current Month Stats (Replaces +2 Meal) */}
+                        <div className="bg-indigo-50/70 border border-indigo-100 rounded-lg p-2 text-[10px] space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-medium">Total Days Eaten:</span>
+                            <span className="font-bold font-mono text-indigo-900 bg-indigo-100/80 px-1.5 py-0.2 rounded">
+                              {totalDaysEaten} {totalDaysEaten === 1 ? 'day' : 'days'} ({totalMealsEaten} meals)
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-500 font-medium">This Month ({monthLabel}):</span>
+                            <span className="font-bold font-mono text-emerald-800 bg-emerald-100/80 px-1.5 py-0.2 rounded">
+                              {monthDaysEaten}d ({monthMeals}m • ₹{monthCost})
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200/60">
+                      {/* Log 1 Meal Button */}
+                      <div className="pt-2 border-t border-slate-200/60">
                         <button
                           type="button"
                           onClick={() => handleQuickLogMeal(person.id, 1)}
-                          className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition text-center shadow-xs"
-                          title="Log 1 Meal (@ ₹100)"
+                          className="w-full bg-amber-500 hover:bg-amber-600 text-white py-1.5 px-2 rounded-lg text-[11px] font-bold cursor-pointer transition text-center shadow-xs flex items-center justify-center gap-1"
+                          title="Log +1 Meal (@ ₹100)"
                         >
+                          <Utensils className="w-3.5 h-3.5" />
                           +1 Meal
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleQuickLogMeal(person.id, 2)}
-                          className="bg-slate-800 hover:bg-slate-900 text-white py-1.5 px-2 rounded text-[11px] font-bold cursor-pointer transition text-center shadow-xs"
-                          title="Log 2 Meals (@ ₹200)"
-                        >
-                          +2 Meals
                         </button>
                       </div>
                     </div>

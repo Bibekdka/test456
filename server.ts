@@ -10,7 +10,7 @@ const DB_FILE = path.join(process.cwd(), 'data', 'db.json');
 
 // Zod Validation Schemas
 const BaseEntitySchema = z.object({
-  id: z.string(),
+  id: z.union([z.string(), z.number()]).transform(v => String(v)),
   updatedAt: z.number().optional(),
   deletedAt: z.number().optional()
 }).passthrough();
@@ -202,6 +202,11 @@ app.post('/api/db/sync/delta', (req, res) => {
     console.error('Error during delta sync:', error);
     res.status(500).json({ error: 'Failed to process incremental sync' });
   }
+});
+
+// Explicit API 404 handler so unmatched API routes respond with JSON 404 instead of Vite SPA index.html
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `API route ${req.method} ${req.path} not found` });
 });
 
 async function startServer() {

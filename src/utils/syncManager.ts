@@ -50,8 +50,18 @@ export async function performIncrementalSync(): Promise<SyncResult> {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Server responded with ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    let errorMsg = `Server responded with ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const errorData = await response.json().catch(() => ({}));
+      errorMsg = errorData.error || errorMsg;
+    }
+    throw new Error(errorMsg);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('Server returned non-JSON response.');
   }
 
   const data = await response.json();
@@ -104,8 +114,13 @@ export async function performFullSync(): Promise<SyncResult> {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `Server responded with ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    let errorMsg = `Server responded with ${response.status}`;
+    if (contentType.includes('application/json')) {
+      const errorData = await response.json().catch(() => ({}));
+      errorMsg = errorData.error || errorMsg;
+    }
+    throw new Error(errorMsg);
   }
 
   const syncTimestamp = Date.now();

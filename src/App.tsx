@@ -56,7 +56,12 @@ import {
   BarChart3,
   BookOpen,
   CloudSun,
-  Receipt
+  Receipt,
+  Sun,
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronLeft
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses';
@@ -83,6 +88,28 @@ export default function App() {
 
   // Selected Active Project
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  // Dark mode & Collapsible Sidebar state
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+  const [isNavCollapsed, setIsNavCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('nav_collapsed') === 'true';
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    localStorage.setItem('nav_collapsed', isNavCollapsed ? 'true' : 'false');
+  }, [isNavCollapsed]);
 
   // Food Expense Calculation custom start date
   const [foodCalculationStartDate, setFoodCalculationStartDate] = useState<string>('');
@@ -134,13 +161,13 @@ export default function App() {
     'Local database initialized in offline-first mode.'
   ]);
 
-  const triggerSync = async (reason: string = 'Manual sync') => {
+  const triggerSync = async (reason: string = 'Manual sync', isFullSync: boolean = false) => {
     if (!navigator.onLine) {
       return;
     }
     setSyncing(true);
     try {
-      const res = await performIncrementalSync();
+      const res = isFullSync ? await performFullSync() : await performIncrementalSync();
       const timestamp = new Date().toLocaleTimeString();
       setLastSynced(timestamp);
       setSyncHistory(prev => [
@@ -217,7 +244,8 @@ export default function App() {
       // Try fetching from the server
       try {
         const response = await fetch('/api/db');
-        if (response.ok) {
+        const contentType = response.headers.get('content-type') || '';
+        if (response.ok && contentType.includes('application/json')) {
           const serverDb = await response.json();
           const serverHasData = serverDb.projects && serverDb.projects.length > 0;
 
@@ -595,7 +623,7 @@ export default function App() {
       setActiveProjectId(remaining.length > 0 ? remaining[0].id : null);
     }
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted project');
+      triggerSync('Auto-sync: Deleted project', true);
     }
   };
 
@@ -644,7 +672,7 @@ export default function App() {
     setFoodLogs(cascadeFoodLogs);
 
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted worker profile');
+      triggerSync('Auto-sync: Deleted worker profile', true);
     }
   };
 
@@ -704,7 +732,7 @@ export default function App() {
     await deleteItem('payers', id);
     setPayers(prev => prev.filter(p => p.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted financial payer');
+      triggerSync('Auto-sync: Deleted financial payer', true);
     }
   };
 
@@ -712,7 +740,7 @@ export default function App() {
     await deleteItem('advances', id);
     setAdvanceRecords(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted advance payment');
+      triggerSync('Auto-sync: Deleted advance payment', true);
     }
   };
 
@@ -731,7 +759,7 @@ export default function App() {
     await deleteItem('payments', id);
     setPaymentRecords(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted worker payment');
+      triggerSync('Auto-sync: Deleted worker payment', true);
     }
   };
 
@@ -758,7 +786,7 @@ export default function App() {
     await deleteItem('materials', id);
     setMaterials(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted material invoice');
+      triggerSync('Auto-sync: Deleted material invoice', true);
     }
   };
 
@@ -777,7 +805,7 @@ export default function App() {
     await deleteItem('hotel_advances', id);
     setHotelAdvances(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted hotel advance');
+      triggerSync('Auto-sync: Deleted hotel advance', true);
     }
   };
 
@@ -801,7 +829,7 @@ export default function App() {
     await deleteItem('food_logs', id);
     setFoodLogs(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted meal deduction');
+      triggerSync('Auto-sync: Deleted meal deduction', true);
     }
   };
 
@@ -825,7 +853,7 @@ export default function App() {
     await deleteItem('gst_records', id);
     setGstRecords(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted GST record');
+      triggerSync('Auto-sync: Deleted GST record', true);
     }
   };
 
@@ -852,7 +880,7 @@ export default function App() {
     await deleteItem('daily_expenses', id);
     setDailyExpenses(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted daily expense outlay');
+      triggerSync('Auto-sync: Deleted daily expense outlay', true);
     }
   };
 
@@ -879,7 +907,7 @@ export default function App() {
     await deleteItem('site_diaries', id);
     setSiteDiaries(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted site diary entry');
+      triggerSync('Auto-sync: Deleted site diary entry', true);
     }
   };
 
@@ -906,7 +934,7 @@ export default function App() {
     await deleteItem('delay_weather_logs', id);
     setDelayWeatherLogs(prev => prev.filter(item => item.id !== id));
     if (navigator.onLine) {
-      triggerSync('Auto-sync: Deleted weather/delay log');
+      triggerSync('Auto-sync: Deleted weather/delay log', true);
     }
   };
 
@@ -1025,333 +1053,243 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center gap-3">
-        <Construction className="w-10 h-10 text-slate-800 animate-spin" />
-        <h2 className="text-sm font-semibold text-slate-600 font-mono">Loading Construction Database...</h2>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col justify-center items-center gap-3">
+        <Construction className="w-10 h-10 text-slate-800 dark:text-slate-200 animate-spin" />
+        <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-400 font-mono">Loading Construction Database...</h2>
       </div>
     );
   }
 
+  const navItems = [
+    { id: 'dashboard', label: 'Overall Dashboard', icon: BarChart3, iconColor: 'text-indigo-500', badge: 'All', category: 'Navigation' },
+    { id: 'projects', label: 'Projects & Timeline', icon: Briefcase, iconColor: 'text-blue-500', badge: projects.length.toString(), category: 'Navigation' },
+    { id: 'labours', label: 'Labour Registry', icon: Users, iconColor: 'text-teal-500', badge: labours.filter(l => l.status === 'active').length.toString(), category: 'Navigation' },
+    { id: 'attendance', label: 'Daily Attendance', icon: CalendarDays, iconColor: 'text-emerald-500', category: 'Navigation' },
+    { id: 'payments', label: 'Wages & Payouts', icon: CircleDollarSign, iconColor: 'text-amber-500', category: 'Navigation' },
+    { id: 'materials', label: 'Material Stocks', icon: Truck, iconColor: 'text-purple-500', category: 'Navigation' },
+    { id: 'diary', label: 'Site Diary & Logs', icon: BookOpen, iconColor: 'text-emerald-500', category: 'Navigation' },
+    { id: 'delays', label: 'Delays & Weather', icon: CloudSun, iconColor: 'text-sky-500', category: 'Navigation' },
+    { id: 'reports', label: 'Ledgers & Backups', icon: FileBarChart2, iconColor: 'text-slate-500', category: 'Navigation' },
+    
+    { id: 'analysis', label: 'Cost Analysis', icon: TrendingUp, iconColor: 'text-indigo-600 dark:text-indigo-400', badge: 'Live', category: 'Costing & Food' },
+    { id: 'food', label: 'Hotel Food (Rs. 100)', icon: Utensils, iconColor: 'text-amber-500', category: 'Costing & Food' },
+    { id: 'expenses', label: 'Daily Expenses & Misc', icon: Receipt, iconColor: 'text-emerald-500', category: 'Costing & Food' },
+    { id: 'gst', label: 'GST Invoices', icon: Percent, iconColor: 'text-violet-500', category: 'Costing & Food' },
+  ];
+
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-      {/* Top Banner Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Logo Brand */}
-          <div className="flex items-center gap-2.5">
-            <div className="bg-slate-900 text-white p-2 rounded-lg">
-              <Construction className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-md font-bold tracking-tight text-slate-900">Construction Manager</h1>
-              <p className="text-[10px] text-slate-400 font-mono tracking-wide uppercase">Worksite Books Proforma</p>
-            </div>
-          </div>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans flex flex-col transition-colors duration-200">
+        {/* Top Banner Header */}
+        <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-40 shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Logo Brand & Mobile Collapse Toggle */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsNavCollapsed(!isNavCollapsed)}
+                className="p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer flex items-center justify-center"
+                title={isNavCollapsed ? "Expand Navigation Sidebar" : "Collapse Navigation Sidebar"}
+              >
+                {isNavCollapsed ? <PanelLeftOpen className="w-5 h-5 text-indigo-600 dark:text-indigo-400" /> : <PanelLeftClose className="w-5 h-5" />}
+              </button>
 
-          {/* Sync status widget & Project Selector */}
-          <div className="flex flex-wrap items-center gap-3 self-start sm:self-center">
-            {/* Online/Offline Status Indicator */}
-            <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold border ${isOnline ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-              {isOnline ? (
-                <>
-                  <Wifi className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                  <span>ONLINE & SYNCED</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3.5 h-3.5 text-amber-600" />
-                  <span>OFFLINE MODE</span>
-                </>
+              <div className="flex items-center gap-2.5">
+                <div className="bg-slate-900 dark:bg-indigo-600 text-white p-2 rounded-lg">
+                  <Construction className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="text-md font-bold tracking-tight text-slate-900 dark:text-white">Construction Manager</h1>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-400 font-mono tracking-wide uppercase">Worksite Books Proforma</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sync status widget, Project Selector & Dark Mode Toggle */}
+            <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-center">
+              {/* Dark Mode Toggle */}
+              <button
+                onClick={() => setIsDarkMode(!isDarkMode)}
+                className="p-1.5 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold"
+                title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              >
+                {isDarkMode ? (
+                  <>
+                    <Sun className="w-4 h-4 text-amber-400" />
+                    <span className="text-[11px] font-semibold">Light</span>
+                  </>
+                ) : (
+                  <>
+                    <Moon className="w-4 h-4 text-indigo-600" />
+                    <span className="text-[11px] font-semibold">Dark</span>
+                  </>
+                )}
+              </button>
+
+              {/* Online/Offline Status Indicator */}
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold border ${isOnline ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300' : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300'}`}>
+                {isOnline ? (
+                  <>
+                    <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                    <span className="hidden xs:inline">ONLINE</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>OFFLINE</span>
+                  </>
+                )}
+              </div>
+
+              {/* Sync Now button */}
+              <button
+                onClick={() => triggerSync('Manual sync')}
+                disabled={syncing || !isOnline}
+                className={`p-1.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                  !isOnline 
+                    ? 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                    : syncing 
+                    ? 'bg-indigo-50 dark:bg-indigo-950 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300' 
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer'
+                }`}
+                title={isOnline ? `Last synced: ${lastSynced}` : 'Offline. All entries are saved locally.'}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-indigo-600 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400'}`} />
+                <span className="hidden sm:inline">{syncing ? 'Syncing...' : 'Sync'}</span>
+              </button>
+
+              {projects.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-slate-400" />
+                  <select
+                    id="active-project-selector"
+                    value={activeProjectId || ''}
+                    onChange={(e) => setActiveProjectId(e.target.value)}
+                    className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  >
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               )}
             </div>
+          </div>
+        </header>
 
-            {/* Sync Now button */}
-            <button
-              onClick={() => triggerSync('Manual sync')}
-              disabled={syncing || !isOnline}
-              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
-                !isOnline 
-                  ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
-                  : syncing 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer'
-              }`}
-              title={isOnline ? `Last synced: ${lastSynced}` : 'Offline. All entries are saved locally.'}
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin text-indigo-600' : 'text-slate-500'}`} />
-              <span>{syncing ? 'Syncing...' : 'Sync'}</span>
-            </button>
+        {/* Main Container Workspace */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col md:flex-row gap-6 w-full">
+          {/* Collapsible Left Navigation Rail / Sidebar */}
+          <aside className={`transition-all duration-300 shrink-0 flex flex-col gap-1.5 ${isNavCollapsed ? 'w-full md:w-16' : 'w-full md:w-64'}`}>
+            <div className={`flex items-center ${isNavCollapsed ? 'justify-center py-1' : 'justify-between px-3 py-1'} mb-1`}>
+              {!isNavCollapsed && (
+                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                  Navigation
+                </span>
+              )}
+              <button
+                onClick={() => setIsNavCollapsed(!isNavCollapsed)}
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
+                title={isNavCollapsed ? "Expand Sidebar (Show Titles)" : "Collapse Sidebar (Icons Only)"}
+              >
+                {isNavCollapsed ? <PanelLeftOpen className="w-4 h-4 text-indigo-500" /> : <PanelLeftClose className="w-4 h-4" />}
+              </button>
+            </div>
 
-            {projects.length > 0 && (
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-slate-400" />
-                <select
-                  id="active-project-selector"
-                  value={activeProjectId || ''}
-                  onChange={(e) => setActiveProjectId(e.target.value)}
-                  className="bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900"
-                >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Navigation Items List */}
+            {navItems.map((item, idx) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              const showCategoryHeader = !isNavCollapsed && (idx === 0 || navItems[idx - 1].category !== item.category);
+
+              return (
+                <React.Fragment key={item.id}>
+                  {showCategoryHeader && idx > 0 && (
+                    <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-3 mt-3 mb-1">
+                      {item.category}
+                    </p>
+                  )}
+
+                  <button
+                    onClick={() => setActiveTab(item.id as TabType)}
+                    className={`group relative flex items-center rounded-xl font-semibold cursor-pointer transition ${
+                      isNavCollapsed ? 'justify-center p-3' : 'justify-between px-3.5 py-2.5 text-sm'
+                    } ${
+                      isActive
+                        ? 'bg-slate-900 dark:bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80'
+                    }`}
+                    title={isNavCollapsed ? item.label : undefined}
+                  >
+                    <span className={`flex items-center gap-2.5 ${isNavCollapsed ? 'justify-center' : ''}`}>
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : item.iconColor || 'text-slate-500 dark:text-slate-400'}`} />
+                      {!isNavCollapsed && <span>{item.label}</span>}
+                    </span>
+
+                    {!isNavCollapsed && item.badge && (
+                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-full ${
+                        isActive 
+                          ? 'bg-white/20 text-white' 
+                          : item.id === 'analysis' 
+                          ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300' 
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}>
+                        {item.badge}
+                      </span>
+                    )}
+
+                    {!isNavCollapsed && !item.badge && (
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform ${isActive ? 'opacity-100 translate-x-0.5' : 'opacity-40'}`} />
+                    )}
+
+                    {/* Tooltip on Hover in Collapsed Mode */}
+                    {isNavCollapsed && (
+                      <div className="hidden md:block absolute left-full ml-2 px-2.5 py-1 bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold rounded-lg shadow-lg whitespace-nowrap z-50 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                        {item.label} {item.badge ? `(${item.badge})` : ''}
+                      </div>
+                    )}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+
+            {/* Active Site Card (Expanded mode) */}
+            {!isNavCollapsed && activeProject && (
+              <div className="mt-4 bg-slate-100 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3.5 space-y-1.5">
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Active Site Card</h4>
+                <p className="font-semibold text-slate-800 dark:text-slate-200 text-xs truncate">{activeProject.name}</p>
+                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                  <span>Budget:</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">₹{activeProject.budget.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                  <span>Status:</span>
+                  <span className="capitalize font-semibold text-indigo-600 dark:text-indigo-400">{activeProject.status.replace('_', ' ')}</span>
+                </div>
               </div>
             )}
-          </div>
-        </div>
-      </header>
 
-      {/* Main Container Workspace */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col md:flex-row gap-6">
-        {/* Navigation Rail / Sidebar */}
-        <aside className="w-full md:w-64 shrink-0 flex flex-col gap-1.5">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Navigation</p>
-
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'dashboard'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <BarChart3 className="w-4 h-4 text-indigo-500" />
-              Overall Dashboard
-            </span>
-            <span className="bg-indigo-100 text-indigo-800 text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">
-              All
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('projects')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'projects'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Briefcase className="w-4 h-4" />
-              Projects & Timeline
-            </span>
-            <span className="bg-slate-200 text-slate-800 text-[10px] px-1.5 py-0.5 rounded-full font-mono group-hover:bg-slate-300">
-              {projects.length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('labours')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'labours'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Users className="w-4 h-4" />
-              Labour Registry
-            </span>
-            <span className="bg-slate-200 text-slate-800 text-[10px] px-1.5 py-0.5 rounded-full font-mono">
-              {labours.filter(l => l.status === 'active').length}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'attendance'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <CalendarDays className="w-4 h-4" />
-              Daily Attendance
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('payments')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'payments'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <CircleDollarSign className="w-4 h-4" />
-              Wages & Payouts
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('materials')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'materials'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Truck className="w-4 h-4" />
-              Material Stocks
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('diary')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'diary'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <BookOpen className="w-4 h-4 text-emerald-500" />
-              Site Diary & Logs
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('delays')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'delays'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <CloudSun className="w-4 h-4 text-amber-500" />
-              Delays & Weather
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'reports'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <FileBarChart2 className="w-4 h-4" />
-              Ledgers & Backups
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-1">Costing & Food</p>
-
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'analysis'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <TrendingUp className="w-4 h-4 text-indigo-600" />
-              Cost Analysis
-            </span>
-            <span className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full font-mono">
-              Live
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('food')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'food'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Utensils className="w-4 h-4 text-amber-500" />
-              Hotel Food (Rs. 100)
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('expenses')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'expenses'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Receipt className="w-4 h-4 text-emerald-500" />
-              Daily Expenses & Misc
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('gst')}
-            className={`flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-semibold cursor-pointer transition ${
-              activeTab === 'gst'
-                ? 'bg-slate-900 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <span className="flex items-center gap-2.5">
-              <Percent className="w-4 h-4 text-indigo-500" />
-              GST Invoices
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-          </button>
-
-          {/* Mini active project details card in footer of sidebar */}
-          {activeProject && (
-            <div className="mt-6 bg-slate-100 border border-slate-200/50 rounded-xl p-4 space-y-2">
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Site Card</h4>
-              <p className="font-semibold text-slate-800 text-xs truncate">{activeProject.name}</p>
-              <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                <span>Budget:</span>
-                <span className="font-semibold text-slate-700">₹{activeProject.budget.toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                <span>Status:</span>
-                <span className="capitalize font-semibold text-indigo-600">{activeProject.status.replace('_', ' ')}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Offline Sync Log Box */}
-          <div className="mt-3 bg-slate-100/50 border border-slate-200/30 rounded-xl p-4 space-y-2">
-            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Info className="w-3.5 h-3.5 text-slate-500" />
-              Offline Sync Logs
-            </h4>
-            <div className="text-[10px] font-mono text-slate-500 space-y-1.5 max-h-[100px] overflow-y-auto leading-relaxed">
-              {syncHistory.map((log, idx) => (
-                <div key={idx} className="border-b border-slate-200/40 pb-1 last:border-0">
-                  {log}
+            {/* Offline Sync Log Box (Expanded mode) */}
+            {!isNavCollapsed && (
+              <div className="mt-2 bg-slate-100/60 dark:bg-slate-800/40 border border-slate-200/40 dark:border-slate-800 rounded-xl p-3 space-y-1.5">
+                <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-slate-400" />
+                  Offline Sync Logs
+                </h4>
+                <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 space-y-1 max-h-[80px] overflow-y-auto leading-relaxed">
+                  {syncHistory.map((log, idx) => (
+                    <div key={idx} className="border-b border-slate-200/40 dark:border-slate-800/40 pb-0.5 last:border-0 truncate">
+                      {log}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <p className="text-[9px] text-slate-400 italic">
-              All transactions are persistently cached locally and replicated when online.
-            </p>
-          </div>
-        </aside>
+              </div>
+            )}
+          </aside>
 
-        {/* Content Panel Area */}
-        <main className="flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          {/* Content Panel Area */}
+          <main className="flex-1 min-w-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xs transition-colors">
           <BackupPromptBanner
             onExportBackup={handleExportBackup}
             lastBackupDate={lastBackupDate}
@@ -1551,7 +1489,7 @@ export default function App() {
         </main>
       </div>
 
-      <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 font-mono">
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-4 text-center text-xs text-slate-400 dark:text-slate-500 font-mono transition-colors">
         Construction Business Ledger & Calculations Dashboard • Local Offline Persistence Secured
       </footer>
       </div>
