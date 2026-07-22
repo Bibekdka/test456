@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Project, Labour, Attendance, Advance, Payment, FoodLog, Payer, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
+import { generateId } from '../utils/id';
 import { 
   Users, UserPlus, Phone, IndianRupee, Calendar, Trash2, Edit, 
   UserX, UserCheck, Archive, History, Plus, Search, Utensils, 
@@ -112,7 +113,7 @@ export default function LabourManager({
     if (isNaN(wage) || wage < 0) return;
 
     const labourData: Labour = {
-      id: editingLabour ? editingLabour.id : 'l_' + Math.random().toString(36).substr(2, 9),
+      id: editingLabour ? editingLabour.id : generateId('l'),
       name: name.trim(),
       perDayWage: wage,
       contact: contact.trim() || 'N/A',
@@ -231,7 +232,7 @@ export default function LabourManager({
     if (trxType === 'advance') {
       if (onAddAdvance) {
         onAddAdvance({
-          id: 'adv_' + Math.random().toString(36).substr(2, 9),
+          id: generateId('adv'),
           labourId: selectedLabourId,
           projectId: activeProject.id,
           amount,
@@ -245,7 +246,7 @@ export default function LabourManager({
       if (onRecordPayment) {
         const stats = getLabourStats(worker);
         onRecordPayment({
-          id: 'pay_' + Math.random().toString(36).substr(2, 9),
+          id: generateId('pay'),
           labourId: selectedLabourId,
           projectId: activeProject.id,
           date: trxDate,

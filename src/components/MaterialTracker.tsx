@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Project, Material, MaterialUsage } from '../types';
+import { generateId } from '../utils/id';
 import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -190,7 +191,7 @@ export default function MaterialTracker({
     if (!name || !quantityBought || !cost) return;
 
     const newMaterial: Material = {
-      id: 'mat_' + Math.random().toString(36).substr(2, 9),
+      id: generateId('mat'),
       projectId: activeProject.id,
       name,
       quantityBought: Number(quantityBought),
@@ -245,7 +246,7 @@ export default function MaterialTracker({
 
   const executeAddUsage = (m: Material, date: string, qty: number, desc: string) => {
     const newUsage: MaterialUsage = {
-      id: 'usage_' + Math.random().toString(36).substr(2, 9),
+      id: generateId('usage'),
       date,
       quantityUsed: qty,
       description: desc || 'General site installation',

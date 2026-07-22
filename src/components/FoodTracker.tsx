@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
+import { generateId } from '../utils/id';
 import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X } from 'lucide-react';
 
 interface FoodTrackerProps {
@@ -269,7 +270,7 @@ export default function FoodTracker({
 
   const handleQuickLogMeal = async (personId: string, count: number = 1, notes: string = 'Daily Mess') => {
     const newLog: FoodLog = {
-      id: 'food_' + Math.random().toString(36).substr(2, 9),
+      id: generateId('food'),
       projectId: activeProject.id,
       labourId: personId,
       date: quickMessDate,
@@ -287,7 +288,7 @@ export default function FoodTracker({
     }
     for (const personId of selectedQuickPersons) {
       const newLog: FoodLog = {
-        id: 'food_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('food'),
         projectId: activeProject.id,
         labourId: personId,
         date: quickMessDate,

@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Project } from '../types';
+import { generateId } from '../utils/id';
 import { Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, CheckCircle2, AlertTriangle, PlayCircle, ToggleLeft, MapPin } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -68,7 +69,7 @@ export default function ProjectManager({
     if (!name || !startDate || !targetDate) return;
 
     const projectData: Project = {
-      id: editingProject ? editingProject.id : 'p_' + Math.random().toString(36).substr(2, 9),
+      id: editingProject ? editingProject.id : generateId('p'),
       name,
       description,
       location: location.trim() || undefined,

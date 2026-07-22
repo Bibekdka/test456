@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Project, DelayWeatherLog } from '../types';
+import { generateId } from '../utils/id';
 import { CloudSun, CloudRain, Thermometer, Timer, AlertTriangle, Activity, Calendar, ListFilter, CheckCircle2, Trash2, Plus, Sun, Cloud, Snowflake, Flame, Zap, Compass, RefreshCw, Pencil } from 'lucide-react';
 
 interface DelayWeatherTrackerProps {
@@ -90,7 +91,7 @@ export default function DelayWeatherTracker({
       onUpdateDelayWeatherLog(updatedLog);
     } else {
       const newLog: DelayWeatherLog = {
-        id: 'dw_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('dw'),
         projectId: activeProject.id,
         date,
         weather,

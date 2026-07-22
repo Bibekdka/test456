@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { Project, SiteDiaryEntry, Attendance } from '../types';
+import { generateId } from '../utils/id';
 import { BookOpen, Plus, Search, Calendar, User, HardHat, FileText, Trash2, ShieldCheck, HelpCircle, ClipboardCheck, Printer, X, Pencil } from 'lucide-react';
 
 interface SiteDiaryProps {
@@ -99,7 +100,7 @@ export default function SiteDiary({
       onUpdateSiteDiary(updatedDiary);
     } else {
       const newDiary: SiteDiaryEntry = {
-        id: 'diary_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('diary'),
         projectId: activeProject.id,
         date,
         supervisorName: supervisorName || 'Site Supervisor',

@@ -6,7 +6,7 @@
 import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
 
 const DB_NAME = 'ConstructionManagerDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 export function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -24,45 +24,59 @@ export function initDB(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const db = request.result;
 
-      if (!db.objectStoreNames.contains('projects')) {
-        db.createObjectStore('projects', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('labours')) {
-        db.createObjectStore('labours', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('attendance')) {
-        db.createObjectStore('attendance', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('advances')) {
-        db.createObjectStore('advances', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('payments')) {
-        db.createObjectStore('payments', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('materials')) {
-        db.createObjectStore('materials', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('hotel_advances')) {
-        db.createObjectStore('hotel_advances', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('food_logs')) {
-        db.createObjectStore('food_logs', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('gst_records')) {
-        db.createObjectStore('gst_records', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('payers')) {
-        db.createObjectStore('payers', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('site_diaries')) {
-        db.createObjectStore('site_diaries', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('delay_weather_logs')) {
-        db.createObjectStore('delay_weather_logs', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('daily_expenses')) {
-        db.createObjectStore('daily_expenses', { keyPath: 'id' });
-      }
+      const stores = [
+        'projects',
+        'labours',
+        'attendance',
+        'advances',
+        'payments',
+        'materials',
+        'hotel_advances',
+        'food_logs',
+        'gst_records',
+        'payers',
+        'site_diaries',
+        'delay_weather_logs',
+        'daily_expenses'
+      ];
+
+      // Ensure stores exist
+      stores.forEach(storeName => {
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName, { keyPath: 'id' });
+        }
+      });
+
+      // Create / Upgrade indexes for performance
+      const transaction = request.transaction!;
+
+      const addIndexSafely = (storeName: string, indexName: string, keyPath: string | string[], options?: IDBIndexParameters) => {
+        if (db.objectStoreNames.contains(storeName)) {
+          const store = transaction.objectStore(storeName);
+          if (!store.indexNames.contains(indexName)) {
+            store.createIndex(indexName, keyPath, options);
+          }
+        }
+      };
+
+      // Add indexes for all relational queries
+      stores.forEach(s => addIndexSafely(s, 'updatedAt', 'updatedAt'));
+
+      ['attendance', 'advances', 'payments', 'materials', 'hotel_advances', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses'].forEach(s => {
+        addIndexSafely(s, 'projectId', 'projectId');
+      });
+
+      ['attendance', 'advances', 'payments', 'food_logs', 'daily_expenses'].forEach(s => {
+        addIndexSafely(s, 'labourId', 'labourId');
+      });
+
+      ['attendance', 'advances', 'payments', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses'].forEach(s => {
+        addIndexSafely(s, 'date', 'date');
+      });
+
+      ['attendance', 'food_logs', 'daily_expenses'].forEach(s => {
+        addIndexSafely(s, 'projectId_date', ['projectId', 'date']);
+      });
     };
   });
 }
@@ -87,11 +101,47 @@ export function getAllItems<T>(storeName: string): Promise<T[]> {
   });
 }
 
-export function putItem<T>(storeName: string, item: T): Promise<void> {
+/**
+ * Fast indexed query by index name and value.
+ * Avoids full scan of IndexedDB store!
+ */
+export function getItemsByIndex<T>(storeName: string, indexName: string, value: IDBValidKey | IDBKeyRange): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    getStore(storeName, 'readonly')
+      .then(({ store }) => {
+        if (!store.indexNames.contains(indexName)) {
+          // Fallback if index missing
+          const req = store.getAll();
+          req.onsuccess = () => resolve((req.result as any[]).filter(item => item[indexName] === value) as T[]);
+          req.onerror = () => reject(req.error);
+          return;
+        }
+        const index = store.index(indexName);
+        const request = index.getAll(value);
+        request.onsuccess = () => resolve(request.result as T[]);
+        request.onerror = () => reject(request.error);
+      })
+      .catch(reject);
+  });
+}
+
+export function getItemsByProjectId<T>(storeName: string, projectId: string): Promise<T[]> {
+  return getItemsByIndex<T>(storeName, 'projectId', projectId);
+}
+
+export function getItemsByLabourId<T>(storeName: string, labourId: string): Promise<T[]> {
+  return getItemsByIndex<T>(storeName, 'labourId', labourId);
+}
+
+export function putItem<T extends { id: string; updatedAt?: number }>(storeName: string, item: T): Promise<void> {
+  const preparedItem = {
+    ...item,
+    updatedAt: item.updatedAt || Date.now()
+  };
   return new Promise((resolve, reject) => {
     getStore(storeName, 'readwrite')
-      .then(({ store, transaction }) => {
-        const request = store.put(item);
+      .then(({ store }) => {
+        const request = store.put(preparedItem);
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
       })
@@ -128,8 +178,9 @@ export function deleteItems(storeName: string, ids: string[]): Promise<void> {
   });
 }
 
-export function putItems<T>(storeName: string, items: T[]): Promise<void> {
+export function putItems<T extends { id: string; updatedAt?: number }>(storeName: string, items: T[]): Promise<void> {
   if (items.length === 0) return Promise.resolve();
+  const now = Date.now();
   return initDB().then((db) => {
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, 'readwrite');
@@ -139,7 +190,11 @@ export function putItems<T>(storeName: string, items: T[]): Promise<void> {
       transaction.onerror = () => reject(transaction.error);
       
       items.forEach((item) => {
-        store.put(item);
+        const prepared = {
+          ...item,
+          updatedAt: item.updatedAt || now
+        };
+        store.put(prepared);
       });
     });
   });

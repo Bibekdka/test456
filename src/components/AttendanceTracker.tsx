@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer } from '../types';
+import { generateId } from '../utils/id';
 import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil, ChevronLeft, ChevronRight, Coffee } from 'lucide-react';
 
 interface AttendanceTrackerProps {
@@ -248,7 +249,7 @@ export default function AttendanceTracker({
     if (!advLabourId || !advAmount) return;
 
     onAddAdvance({
-      id: 'adv_' + Math.random().toString(36).substr(2, 9),
+      id: generateId('adv'),
       labourId: advLabourId,
       projectId: activeProject.id,
       amount: Number(advAmount),
@@ -295,7 +296,7 @@ export default function AttendanceTracker({
       alert('Payer updated successfully!');
     } else {
       onAddPayer({
-        id: 'p_' + Math.random().toString(36).substr(2, 9),
+        id: generateId('p'),
         name: payerName.trim(),
         role: payerRole.trim() || undefined,
         phone: payerPhone.trim() || undefined,

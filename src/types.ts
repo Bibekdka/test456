@@ -3,7 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export interface Project {
+export interface BaseEntity {
+  updatedAt?: number;
+  deletedAt?: number;
+}
+
+export interface Project extends BaseEntity {
   id: string;
   name: string;
   description: string;
@@ -20,7 +25,7 @@ export interface Project {
 
 export type PersonRole = 'worker' | 'contractor' | 'staff' | 'other';
 
-export interface Labour {
+export interface Labour extends BaseEntity {
   id: string;
   name: string;
   perDayWage: number;
@@ -34,7 +39,7 @@ export interface Labour {
 
 export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home' | 'pending' | 'rest';
 
-export interface Attendance {
+export interface Attendance extends BaseEntity {
   id: string;
   labourId: string;
   projectId: string;
@@ -42,7 +47,7 @@ export interface Attendance {
   status: AttendanceStatus;
 }
 
-export interface Advance {
+export interface Advance extends BaseEntity {
   id: string;
   labourId: string;
   projectId: string;
@@ -52,14 +57,14 @@ export interface Advance {
   paidBy?: string; // ID or Name of Payer who made the payment
 }
 
-export interface Payer {
+export interface Payer extends BaseEntity {
   id: string;
   name: string;
   role?: string; // e.g., Supervisor, Cashier, Manager
   phone?: string;
 }
 
-export interface Payment {
+export interface Payment extends BaseEntity {
   id: string;
   labourId: string;
   projectId: string;
@@ -78,7 +83,7 @@ export interface MaterialUsage {
   description?: string;
 }
 
-export interface Material {
+export interface Material extends BaseEntity {
   id: string;
   projectId: string;
   name: string;
@@ -93,7 +98,7 @@ export interface Material {
   alertThreshold?: number; // stock warning alert threshold
 }
 
-export interface SiteDiaryEntry {
+export interface SiteDiaryEntry extends BaseEntity {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD
@@ -104,7 +109,7 @@ export interface SiteDiaryEntry {
   remarks?: string; // other operational notes
 }
 
-export interface DelayWeatherLog {
+export interface DelayWeatherLog extends BaseEntity {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD
@@ -116,7 +121,7 @@ export interface DelayWeatherLog {
   delayNotes?: string;
 }
 
-export interface HotelAdvance {
+export interface HotelAdvance extends BaseEntity {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD
@@ -125,7 +130,7 @@ export interface HotelAdvance {
   notes?: string;
 }
 
-export interface FoodLog {
+export interface FoodLog extends BaseEntity {
   id: string;
   projectId: string;
   labourId: string;
@@ -135,7 +140,7 @@ export interface FoodLog {
   notes?: string;
 }
 
-export interface GstRecord {
+export interface GstRecord extends BaseEntity {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD
@@ -149,7 +154,7 @@ export interface GstRecord {
   notes?: string;
 }
 
-export interface DailyExpense {
+export interface DailyExpense extends BaseEntity {
   id: string;
   projectId: string;
   date: string; // YYYY-MM-DD

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Project, Labour, Payer, DailyExpense } from '../types';
+import { generateId } from '../utils/id';
 import { 
   IndianRupee, 
   Plus, 
@@ -220,7 +221,7 @@ export default function DailyExpensesTracker({
     }
 
     const expData: DailyExpense = {
-      id: editingExpense?.id || 'exp_' + Math.random().toString(36).substr(2, 9),
+      id: editingExpense?.id || generateId('exp'),
       projectId: activeProject.id,
       date,
       category,

@@ -3,8 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Project, Labour, Attendance, Advance, Payment, getLabourDaysWorked } from '../types';
+import { generateId } from '../utils/id';
 import { 
   IndianRupee, 
   Calendar, 
@@ -123,7 +124,7 @@ export default function LabourPaymentCalculator({
     const stats = getLabourStats(labour);
 
     const paymentData: Payment = {
-      id: 'pay_' + Math.random().toString(36).substr(2, 9),
+      id: generateId('pay'),
       labourId: selectedLabourId,
       projectId: activeProject.id,
       date: payDate,

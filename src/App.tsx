@@ -16,6 +16,10 @@ import {
   putItems
 } from './db';
 
+import { generateId } from './utils/id';
+import { performIncrementalSync, performFullSync } from './utils/syncManager';
+import { ToastProvider } from './components/ToastContainer';
+
 import ProjectManager from './components/ProjectManager';
 import LabourManager from './components/LabourManager';
 import AttendanceTracker from './components/AttendanceTracker';
@@ -96,47 +100,30 @@ export default function App() {
     }
     setSyncing(true);
     try {
-      const payload = {
-        projects: await getAllItems<Project>('projects'),
-        labours: await getAllItems<Labour>('labours'),
-        attendance: await getAllItems<Attendance>('attendance'),
-        advances: await getAllItems<Advance>('advances'),
-        payments: await getAllItems<Payment>('payments'),
-        materials: await getAllItems<Material>('materials'),
-        hotel_advances: await getAllItems<HotelAdvance>('hotel_advances'),
-        food_logs: await getAllItems<FoodLog>('food_logs'),
-        gst_records: await getAllItems<GstRecord>('gst_records'),
-        payers: await getAllItems<Payer>('payers'),
-        site_diaries: await getAllItems<SiteDiaryEntry>('site_diaries'),
-        delay_weather_logs: await getAllItems<DelayWeatherLog>('delay_weather_logs'),
-        daily_expenses: await getAllItems<DailyExpense>('daily_expenses'),
-      };
-
-      const response = await fetch('/api/db/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error('Server sync failed');
-      }
-
+      const res = await performIncrementalSync();
       const timestamp = new Date().toLocaleTimeString();
       setLastSynced(timestamp);
       setSyncHistory(prev => [
-        `[${timestamp}] ${reason} - Successfully synchronized all records to back-end cloud server.`,
+        `[${timestamp}] ${reason} - ${res.message}`,
         ...prev.slice(0, 4)
       ]);
-    } catch (err) {
-      console.error('Sync failed:', err);
-      const timestamp = new Date().toLocaleTimeString();
-      setSyncHistory(prev => [
-        `[${timestamp}] Sync Failed: Could not connect to database server.`,
-        ...prev.slice(0, 4)
-      ]);
+    } catch (err: any) {
+      console.error('Incremental sync failed, falling back:', err);
+      try {
+        const res = await performFullSync();
+        const timestamp = new Date().toLocaleTimeString();
+        setLastSynced(timestamp);
+        setSyncHistory(prev => [
+          `[${timestamp}] ${reason} - Full sync fallback succeeded.`,
+          ...prev.slice(0, 4)
+        ]);
+      } catch (fallbackErr) {
+        const timestamp = new Date().toLocaleTimeString();
+        setSyncHistory(prev => [
+          `[${timestamp}] Sync Failed: ${err?.message || 'Server error'}`,
+          ...prev.slice(0, 4)
+        ]);
+      }
     } finally {
       setSyncing(false);
     }
@@ -457,7 +444,7 @@ export default function App() {
         } else {
           // Create a new log
           const newLog: DelayWeatherLog = {
-            id: 'dw_' + Math.random().toString(36).substr(2, 9),
+            id: generateId('dw'),
             projectId: p.id,
             date: dateStr,
             weather: weatherType,
@@ -983,7 +970,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+    <ToastProvider>
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       {/* Top Banner Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1497,6 +1485,7 @@ export default function App() {
       <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 font-mono">
         Construction Business Ledger & Calculations Dashboard • Local Offline Persistence Secured
       </footer>
-    </div>
+      </div>
+    </ToastProvider>
   );
 }

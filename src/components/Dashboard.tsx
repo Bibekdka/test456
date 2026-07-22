@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
+import { generateId } from '../utils/id';
 import { 
   Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
   TrendingUp, Users, Truck, Utensils, Percent, CircleDollarSign, 
@@ -158,7 +159,7 @@ export default function Dashboard({
     if (!name || !startDate || !targetDate) return;
 
     const projectData: Project = {
-      id: editingProject ? editingProject.id : 'p_' + Math.random().toString(36).substr(2, 9),
+      id: editingProject ? editingProject.id : generateId('p'),
       name,
       description,
       location: location.trim() || undefined,
