@@ -26,6 +26,7 @@ interface ReportGeneratorProps {
   payers: Payer[];
   dailyExpenses: DailyExpense[];
   onImportBackup: (backupData: any) => void;
+  onExportBackup?: () => void;
   foodCalculationStartDate?: string;
 }
 
@@ -45,6 +46,7 @@ export default function ReportGenerator({
   payers,
   dailyExpenses,
   onImportBackup,
+  onExportBackup,
   foodCalculationStartDate = '',
 }: ReportGeneratorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -470,6 +472,99 @@ export default function ReportGenerator({
       foodNextY = ((doc as any).lastAutoTable?.finalY || foodNextY) + 12;
     }
 
+    // 6c. Hotel & Mess Advances Disbursed Section
+    const projectHotelAdvances = hotelAdvances.filter(h => h.projectId === activeProject.id);
+    let hotelNextY = foodNextY;
+    if (projectHotelAdvances.length > 0) {
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("HOTEL & MESS ADVANCES LOG", 14, hotelNextY);
+
+      const hotelRows = projectHotelAdvances.map(h => [
+        h.date,
+        h.hotelName,
+        `Rs. ${h.amount.toLocaleString()}`,
+        h.notes || 'N/A'
+      ]);
+
+      autoTable(doc, {
+        head: [['Date', 'Hotel / Mess Name', 'Advance Amount Paid', 'Notes / Remarks']],
+        body: hotelRows,
+        startY: hotelNextY + 4,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229] },
+        styles: { fontSize: 8 },
+      });
+      hotelNextY = ((doc as any).lastAutoTable?.finalY || hotelNextY) + 12;
+    }
+
+    // 6d. GST Invoices & Tax Billing Log Section
+    const projectGstRecords = gstRecords.filter(g => g.projectId === activeProject.id);
+    let gstNextY = hotelNextY;
+    if (projectGstRecords.length > 0) {
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("GST INVOICES & TAX RECORDS LOG", 14, gstNextY);
+
+      const gstRows = projectGstRecords.map(g => [
+        g.date,
+        g.invoiceNo,
+        g.partyName,
+        g.gstin || 'N/A',
+        g.type === 'paid' ? 'Purchase (ITC Paid)' : 'Sales (Claimed)',
+        `Rs. ${g.amount.toLocaleString()}`,
+        `${g.gstRate}%`,
+        `Rs. ${g.gstAmount.toLocaleString()}`,
+        `Rs. ${(g.amount + g.gstAmount).toLocaleString()}`
+      ]);
+
+      autoTable(doc, {
+        head: [['Date', 'Invoice No', 'Party Name', 'GSTIN', 'Type', 'Base Amt', 'Tax %', 'GST Amt', 'Total Invoice']],
+        body: gstRows,
+        startY: gstNextY + 4,
+        theme: 'striped',
+        headStyles: { fillColor: [14, 116, 144] },
+        styles: { fontSize: 8 },
+      });
+      gstNextY = ((doc as any).lastAutoTable?.finalY || gstNextY) + 12;
+    }
+
+    // 6e. Paying Officers & Disbursed Cash Flow Summary Section
+    let payerNextY = gstNextY;
+    if (payers.length > 0) {
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("PAYING OFFICERS & CASH DISBURSALS LOG", 14, payerNextY);
+
+      const payerRows = payers.map(p => {
+        const advTotal = advanceRecords
+          .filter(a => a.projectId === activeProject.id && a.paidBy === p.id)
+          .reduce((sum, a) => sum + a.amount, 0);
+        const expTotal = dailyExpenses
+          .filter(e => e.projectId === activeProject.id && e.payerId === p.id)
+          .reduce((sum, e) => sum + e.amount, 0);
+
+        return [
+          p.name,
+          p.role || 'Officer / Manager',
+          p.phone || 'N/A',
+          `Rs. ${advTotal.toLocaleString()}`,
+          `Rs. ${expTotal.toLocaleString()}`,
+          `Rs. ${(advTotal + expTotal).toLocaleString()}`
+        ];
+      });
+
+      autoTable(doc, {
+        head: [['Payer / Cashier Name', 'Designation Role', 'Contact Phone', 'Labour Advances Paid', 'Daily Expenses Paid', 'Total Funds Distributed']],
+        body: payerRows,
+        startY: payerNextY + 4,
+        theme: 'striped',
+        headStyles: { fillColor: [71, 85, 105] },
+        styles: { fontSize: 8 },
+      });
+      payerNextY = ((doc as any).lastAutoTable?.finalY || payerNextY) + 12;
+    }
+
     // 7. Appendix of Digital Receipts / Bill Snaps
     const pdfSnaps: { date: string; category: string; desc: string; amount: string; img: string; name: string }[] = [];
 
@@ -764,11 +859,69 @@ export default function ReportGenerator({
       XLSX.utils.book_append_sheet(wb, wsFood, "Food Costs Ledger");
     }
 
+    // Tab 8: Hotel & Mess Advances
+    const projectHotelAdvances = hotelAdvances.filter(h => h.projectId === activeProject.id);
+    if (projectHotelAdvances.length > 0) {
+      const hotelExcelRows = projectHotelAdvances.map(h => ({
+        "Date": h.date,
+        "Hotel / Mess Name": h.hotelName,
+        "Advance Amount Paid (Rs.)": h.amount,
+        "Notes / Remarks": h.notes || "N/A"
+      }));
+      const wsHotel = XLSX.utils.json_to_sheet(hotelExcelRows);
+      XLSX.utils.book_append_sheet(wb, wsHotel, "Hotel & Mess Advances");
+    }
+
+    // Tab 9: GST Tax & Invoices
+    const projectGstRecords = gstRecords.filter(g => g.projectId === activeProject.id);
+    if (projectGstRecords.length > 0) {
+      const gstExcelRows = projectGstRecords.map(g => ({
+        "Date": g.date,
+        "Invoice No": g.invoiceNo,
+        "Party Name": g.partyName,
+        "GSTIN": g.gstin || "N/A",
+        "Transaction Type": g.type === 'paid' ? 'Purchase (ITC Paid)' : 'Sales (Claimed)',
+        "Base Taxable Amount (Rs.)": g.amount,
+        "GST Rate (%)": g.gstRate,
+        "GST Tax Amount (Rs.)": g.gstAmount,
+        "Total Invoice Amount (Rs.)": g.amount + g.gstAmount,
+        "Notes": g.notes || "N/A"
+      }));
+      const wsGst = XLSX.utils.json_to_sheet(gstExcelRows);
+      XLSX.utils.book_append_sheet(wb, wsGst, "GST Invoices & Tax");
+    }
+
+    // Tab 10: Paying Officers & Cash Disbursals
+    if (payers.length > 0) {
+      const payerExcelRows = payers.map(p => {
+        const advTotal = advanceRecords
+          .filter(a => a.projectId === activeProject.id && a.paidBy === p.id)
+          .reduce((sum, a) => sum + a.amount, 0);
+        const expTotal = dailyExpenses
+          .filter(e => e.projectId === activeProject.id && e.payerId === p.id)
+          .reduce((sum, e) => sum + e.amount, 0);
+        return {
+          "Officer / Cashier Name": p.name,
+          "Role / Designation": p.role || "Officer",
+          "Contact Phone": p.phone || "N/A",
+          "Labour Advances Paid (Rs.)": advTotal,
+          "Daily Expenses Disbursed (Rs.)": expTotal,
+          "Total Disbursed Funds (Rs.)": advTotal + expTotal
+        };
+      });
+      const wsPayers = XLSX.utils.json_to_sheet(payerExcelRows);
+      XLSX.utils.book_append_sheet(wb, wsPayers, "Paying Officers Ledger");
+    }
+
     XLSX.writeFile(wb, `Construction_Report_${siteName.replace(/\s+/g, '_')}.xlsx`);
   };
 
   // Full Database Backup Export
   const exportFullBackup = () => {
+    if (onExportBackup) {
+      onExportBackup();
+      return;
+    }
     const data = {
       version: 1,
       timestamp: new Date().toISOString(),
@@ -794,6 +947,8 @@ export default function ReportGenerator({
     link.download = `Construction_Manager_Full_Backup_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     URL.revokeObjectURL(url);
+
+    localStorage.setItem('last_backup_date', new Date().toISOString());
   };
 
   // Full Database Backup Import Trigger

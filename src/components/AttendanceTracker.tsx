@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer } from '../types';
 import { generateId } from '../utils/id';
-import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil, ChevronLeft, ChevronRight, Coffee } from 'lucide-react';
+import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil, ChevronLeft, ChevronRight, Coffee, CalendarDays, UserX } from 'lucide-react';
+import AttendanceCalendar from './AttendanceCalendar';
 
 interface AttendanceTrackerProps {
   activeProject: Project | null;
@@ -40,7 +41,7 @@ export default function AttendanceTracker({
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [trackerState, setTrackerState] = useState<Record<string, { status: AttendanceStatus; advance: number; note: string; paidBy: string }>>({});
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'tracker' | 'standalone' | 'payers'>('tracker');
+  const [activeSubTab, setActiveSubTab] = useState<'tracker' | 'calendar' | 'standalone' | 'payers'>('tracker');
 
   // Dialog and feedback states
   const [showSavedDialog, setShowSavedDialog] = useState(false);
@@ -65,49 +66,41 @@ export default function AttendanceTracker({
   const [deletingPayerId, setDeletingPayerId] = useState<string | null>(null);
   const [editingPayer, setEditingPayer] = useState<Payer | null>(null);
 
-  // Active labours who joined on or before selectedDate, and haven't left, or left AFTER the selected date
+  // Toggle state for displaying former workers who have left work
+  const [showLeftWorkersSection, setShowLeftWorkersSection] = useState(false);
+
+  // Active labours who are currently working and joined on or before selectedDate
   const activeLabours = labours.filter(l => {
-    if (l.joinedDate && l.joinedDate > selectedDate) {
-      return false; // Joined after the selected date
-    }
-    if (l.status === 'active') return true;
-    if (l.status === 'left' && l.leftDate) {
-      return l.leftDate >= selectedDate; // Was still working on or after selected date
-    }
-    return false;
+    if (l.status === 'left') return false; // Exclude anyone who has left
+    if (l.joinedDate && l.joinedDate > selectedDate) return false; // Joined after selected date
+    return true;
   });
 
-  // Labours who are registered but hidden because their joining date is after selectedDate
+  // Personnel who have left work
+  const leftLabours = labours.filter(l => l.status === 'left');
+
+  // Labours who are registered active but hidden because their joining date is after selectedDate
   const hiddenLabours = labours.filter(l => {
-    return l.status === 'active' && l.joinedDate && l.joinedDate > selectedDate;
+    return l.status !== 'left' && l.joinedDate && l.joinedDate > selectedDate;
   });
 
   // Track previous project and date to detect if we switched tabs/dates/projects
   const prevSelectedDateRef = useRef(selectedDate);
   const prevProjectIdRef = useRef(activeProject?.id);
 
-  // When date or labours change, pre-load existing attendance and advances for this date/project
+  // When date, project, subtab, or attendance/advance records change, keep tracker state in sync for both active and left workers
   useEffect(() => {
     if (!activeProject) return;
 
-    const dateOrProjectChanged = 
-      prevSelectedDateRef.current !== selectedDate || 
-      prevProjectIdRef.current !== activeProject.id;
-
-    // Update refs
     prevSelectedDateRef.current = selectedDate;
     prevProjectIdRef.current = activeProject.id;
 
-    setTrackerState(prev => {
-      const updatedTracker = dateOrProjectChanged ? {} : { ...prev };
+    setTrackerState(() => {
+      const updatedTracker: Record<string, { status: AttendanceStatus; advance: number; note: string; paidBy: string }> = {};
 
-      activeLabours.forEach(l => {
-        // If date/project didn't change and we already have a state for this labour,
-        // preserve the user's unsaved state!
-        if (!dateOrProjectChanged && updatedTracker[l.id]) {
-          return;
-        }
+      const allLaboursToTrack = [...activeLabours, ...leftLabours];
 
+      allLaboursToTrack.forEach(l => {
         // Find existing attendance
         const existingAtt = attendanceRecords.find(
           r => r.labourId === l.id && r.projectId === activeProject.id && r.date === selectedDate
@@ -128,7 +121,7 @@ export default function AttendanceTracker({
 
       return updatedTracker;
     });
-  }, [selectedDate, activeProject, labours, attendanceRecords, advanceRecords]);
+  }, [selectedDate, activeProject?.id, activeSubTab, labours, attendanceRecords, advanceRecords]);
 
   if (!activeProject) {
     return (
@@ -186,46 +179,49 @@ export default function AttendanceTracker({
       const finalAttendance: Attendance[] = [];
       const savedSummary: { name: string; status: AttendanceStatus; advance: number }[] = [];
 
-      for (const l of activeLabours) {
-        const state = trackerState[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' };
-        savedSummary.push({
-          name: l.name,
-          status: state.status,
-          advance: state.advance,
-        });
+      const targetLabours = [...activeLabours, ...leftLabours];
 
-        // Build attendance record
+      for (const l of targetLabours) {
+        const state = trackerState[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' };
+        const isLeft = l.status === 'left';
+
         const existingAtt = attendanceRecords.find(
           r => r.labourId === l.id && r.projectId === activeProject.id && r.date === selectedDate
         );
-        finalAttendance.push({
-          id: existingAtt ? existingAtt.id : 'att_' + l.id + '_' + activeProject.id + '_' + selectedDate,
-          labourId: l.id,
-          projectId: activeProject.id,
-          date: selectedDate,
-          status: state.status,
-        });
+        const existingAdv = advanceRecords.find(
+          a => a.labourId === l.id && a.projectId === activeProject.id && a.date === selectedDate
+        );
 
-        // Save/Update Advance if > 0
-        if (state.advance > 0) {
-          const existingAdv = advanceRecords.find(
-            a => a.labourId === l.id && a.projectId === activeProject.id && a.date === selectedDate
-          );
-          await onAddAdvance({
-            id: existingAdv ? existingAdv.id : 'adv_' + l.id + '_' + activeProject.id + '_' + selectedDate,
+        // For active labours: save all
+        // For left labours: save if they have an existing record, or if status is set, or if advance > 0
+        if (!isLeft || existingAtt || state.status !== 'pending' || state.advance > 0) {
+          savedSummary.push({
+            name: l.name + (isLeft ? ' (Left Work)' : ''),
+            status: state.status,
+            advance: state.advance,
+          });
+
+          // Build attendance record
+          finalAttendance.push({
+            id: existingAtt ? existingAtt.id : 'att_' + l.id + '_' + activeProject.id + '_' + selectedDate,
             labourId: l.id,
             projectId: activeProject.id,
-            amount: state.advance,
             date: selectedDate,
-            description: state.note || 'Advance taken on site',
-            paidBy: state.paidBy || '',
+            status: state.status,
           });
-        } else {
-          // If advance was set to 0 but was previously logged, remove it
-          const existingAdv = advanceRecords.find(
-            a => a.labourId === l.id && a.projectId === activeProject.id && a.date === selectedDate
-          );
-          if (existingAdv) {
+
+          // Save/Update Advance if > 0
+          if (state.advance > 0) {
+            await onAddAdvance({
+              id: existingAdv ? existingAdv.id : 'adv_' + l.id + '_' + activeProject.id + '_' + selectedDate,
+              labourId: l.id,
+              projectId: activeProject.id,
+              amount: state.advance,
+              date: selectedDate,
+              description: state.note || 'Advance taken on site',
+              paidBy: state.paidBy || '',
+            });
+          } else if (existingAdv) {
             await onDeleteAdvance(existingAdv.id);
           }
         }
@@ -312,6 +308,57 @@ export default function AttendanceTracker({
   // Filter advances to show only for active project
   const projectAdvances = advanceRecords.filter(a => a.projectId === activeProject.id);
 
+  // Monthly Attendance & Advance Expenses calculation
+  const [showMonthlyAttendanceDetails, setShowMonthlyAttendanceDetails] = useState(false);
+
+  const monthlyAttendanceData = React.useMemo(() => {
+    const monthsMap = new Map<string, { monthKey: string; monthLabel: string; totalWages: number; totalAdvances: number; presentDays: number; halfDays: number }>();
+
+    const getMonthObj = (dateStr: string) => {
+      if (!dateStr || dateStr.length < 7) return null;
+      const monthKey = dateStr.substring(0, 7); // YYYY-MM
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          totalWages: 0,
+          totalAdvances: 0,
+          presentDays: 0,
+          halfDays: 0
+        });
+      }
+      return monthsMap.get(monthKey)!;
+    };
+
+    const projectAttendance = attendanceRecords.filter(a => a.projectId === activeProject.id);
+    projectAttendance.forEach(att => {
+      const obj = getMonthObj(att.date);
+      if (obj) {
+        const labour = labours.find(l => l.id === att.labourId);
+        const wage = labour ? labour.perDayWage : 0;
+        if (att.status === 'present') {
+          obj.presentDays += 1;
+          obj.totalWages += wage;
+        } else if (att.status === 'half_day') {
+          obj.halfDays += 1;
+          obj.totalWages += wage / 2;
+        }
+      }
+    });
+
+    projectAdvances.forEach(adv => {
+      const obj = getMonthObj(adv.date);
+      if (obj) {
+        obj.totalAdvances += adv.amount || 0;
+      }
+    });
+
+    return Array.from(monthsMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [attendanceRecords, advanceRecords, activeProject.id, labours]);
+
   return (
     <div id="attendance-tracker-section" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -356,21 +403,32 @@ export default function AttendanceTracker({
       </div>
 
       {/* Sub Tabs Navigation */}
-      <div className="flex border border-slate-100 bg-slate-50/50 p-1.5 rounded-xl max-w-xl shadow-sm">
+      <div className="flex border border-slate-100 bg-slate-50/50 p-1.5 rounded-xl max-w-2xl shadow-sm flex-wrap gap-1">
         <button
           onClick={() => setActiveSubTab('tracker')}
-          className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 min-w-[130px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             activeSubTab === 'tracker'
               ? 'bg-slate-900 text-white shadow'
               : 'text-slate-500 hover:bg-white hover:text-slate-800'
           }`}
         >
           <Calendar className="w-3.5 h-3.5" />
-          Attendance & Daily Advances
+          Daily Register
+        </button>
+        <button
+          onClick={() => setActiveSubTab('calendar')}
+          className={`flex-1 min-w-[140px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            activeSubTab === 'calendar'
+              ? 'bg-slate-900 text-white shadow'
+              : 'text-slate-500 hover:bg-white hover:text-slate-800'
+          }`}
+        >
+          <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
+          Attendance Calendar
         </button>
         <button
           onClick={() => setActiveSubTab('standalone')}
-          className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 min-w-[130px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             activeSubTab === 'standalone'
               ? 'bg-slate-900 text-white shadow'
               : 'text-slate-500 hover:bg-white hover:text-slate-800'
@@ -381,7 +439,7 @@ export default function AttendanceTracker({
         </button>
         <button
           onClick={() => setActiveSubTab('payers')}
-          className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+          className={`flex-1 min-w-[130px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             activeSubTab === 'payers'
               ? 'bg-slate-900 text-white shadow'
               : 'text-slate-500 hover:bg-white hover:text-slate-800'
@@ -391,6 +449,87 @@ export default function AttendanceTracker({
           Payers Directory ({payers.length})
         </button>
       </div>
+
+      {/* Monthly Attendance Wages & Advances Expenses Breakdown Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowMonthlyAttendanceDetails(!showMonthlyAttendanceDetails)}>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                Monthly Attendance Wages & Daily Advances Breakdown
+                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {monthlyAttendanceData.length} Months Logged
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-500">Historical month-by-month attendance earned wages vs daily advances paid to workers.</p>
+            </div>
+          </div>
+          <button className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer">
+            {showMonthlyAttendanceDetails ? 'Hide Monthly Table ▲' : 'View Monthly Breakdown ▼'}
+          </button>
+        </div>
+
+        {showMonthlyAttendanceDetails && (
+          <div className="overflow-x-auto border-t border-slate-100 pt-3">
+            {monthlyAttendanceData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No attendance or advance records logged yet.</p>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                    <th className="p-2.5">Month</th>
+                    <th className="p-2.5 text-center">Days Worked (Present / Half)</th>
+                    <th className="p-2.5 text-right font-black text-slate-800">Earned Wages (₹)</th>
+                    <th className="p-2.5 text-right text-rose-700">Advances Paid (₹)</th>
+                    <th className="p-2.5 text-right font-black text-indigo-900 bg-indigo-50/30">Net Payable Balance (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {monthlyAttendanceData.map((m) => {
+                    const netPayable = m.totalWages - m.totalAdvances;
+                    return (
+                      <tr key={m.monthKey} className="hover:bg-slate-50/80">
+                        <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                          {m.monthLabel}
+                        </td>
+                        <td className="p-2.5 text-center text-slate-700 font-sans">
+                          <span className="font-semibold text-emerald-700">{m.presentDays} Full</span>
+                          {m.halfDays > 0 && <span className="text-amber-600 font-medium"> + {m.halfDays} Half</span>}
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-slate-900">
+                          ₹{m.totalWages.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-2.5 text-right font-semibold text-rose-600">
+                          ₹{m.totalAdvances.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-2.5 text-right font-black text-indigo-950 bg-indigo-50/20">
+                          ₹{netPayable.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* RENDER TAB: ATTENDANCE CALENDAR */}
+      {activeSubTab === 'calendar' && activeProject && (
+        <AttendanceCalendar
+          activeProject={activeProject}
+          labours={labours}
+          attendanceRecords={attendanceRecords}
+          onSaveAttendance={onSaveAttendance}
+          onUpdateLabour={onUpdateLabour}
+          onSelectDate={(dateStr) => setSelectedDate(dateStr)}
+        />
+      )}
 
       {/* RENDER TAB 1: DAILY ATTENDANCE & ADVANCES TRACKER */}
       {activeSubTab === 'tracker' && (
@@ -742,6 +881,179 @@ export default function AttendanceTracker({
                   </button>
                 </div>
               </div>
+
+              {/* SEPARATE SECTION FOR FORMER WORKERS WHO HAVE LEFT WORK */}
+              {leftLabours.length > 0 && (
+                <div className="bg-white border border-rose-200 rounded-xl overflow-hidden shadow-xs space-y-0 mt-6">
+                  <div 
+                    className="bg-rose-50/70 p-4 border-b border-rose-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 cursor-pointer select-none"
+                    onClick={() => setShowLeftWorkersSection(!showLeftWorkersSection)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-rose-100 text-rose-800 rounded-lg font-bold">
+                        <UserX className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-rose-950 uppercase tracking-wider flex items-center gap-2">
+                          Personnel Who Have Left Work ({leftLabours.length})
+                          <span className="bg-rose-200 text-rose-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                            Kept Separate
+                          </span>
+                        </h4>
+                        <p className="text-xs text-rose-800">
+                          These workers have left employment and are excluded from your active daily register. Click to expand and view or edit historical records.
+                        </p>
+                      </div>
+                    </div>
+                    <button className="text-xs font-bold text-rose-900 bg-white border border-rose-300 hover:bg-rose-100 px-3 py-1.5 rounded-lg shadow-xs transition cursor-pointer">
+                      {showLeftWorkersSection ? 'Hide Former Personnel ▲' : 'View Former Personnel Register ▼'}
+                    </button>
+                  </div>
+
+                  {showLeftWorkersSection && (
+                    <div className="p-4 space-y-4 bg-rose-50/10">
+                      <div className="overflow-x-auto border border-rose-100 rounded-lg bg-white">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-rose-50/60 border-b border-rose-200 text-rose-800 uppercase tracking-wider text-[10px] font-bold">
+                              <th className="py-3 px-4">Labour Name (Left Work)</th>
+                              <th className="py-3 px-4">Daily Wage</th>
+                              <th className="py-3 px-4 text-center">Attendance Status</th>
+                              <th className="py-3 px-4">Advance Taken Today (Rs.)</th>
+                              <th className="py-3 px-4">Advance Note</th>
+                              <th className="py-3 px-4">Paid By</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-sm text-slate-700">
+                            {leftLabours.map((l) => {
+                              const state = trackerState[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' };
+
+                              return (
+                                <tr key={l.id} className="hover:bg-rose-50/30 transition">
+                                  <td className="py-3.5 px-4 font-medium text-slate-800">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-800">{l.name}</span>
+                                      <span className="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded border border-rose-200">
+                                        LEFT {l.leftDate ? `on ${l.leftDate}` : ''}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{l.contact || 'No contact'}</div>
+                                  </td>
+                                  <td className="py-3.5 px-4 font-mono text-slate-500">₹{l.perDayWage}</td>
+                                  <td className="py-3.5 px-4 text-center">
+                                    <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50/50 flex-wrap gap-0.5 justify-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStatusChange(l.id, 'present')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                          state.status === 'present'
+                                            ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                                            : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-700'
+                                        }`}
+                                      >
+                                        🟢 Present
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStatusChange(l.id, 'half_day')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                          state.status === 'half_day'
+                                            ? 'bg-amber-500 text-white shadow-xs font-bold'
+                                            : 'text-slate-600 hover:bg-amber-50 hover:text-amber-700'
+                                        }`}
+                                      >
+                                        🟡 Half
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStatusChange(l.id, 'absent')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                          state.status === 'absent'
+                                            ? 'bg-rose-600 text-white shadow-xs font-bold'
+                                            : 'text-slate-600 hover:bg-rose-50 hover:text-rose-700'
+                                        }`}
+                                      >
+                                        🔴 Absent
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStatusChange(l.id, 'rest')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                          state.status === 'rest'
+                                            ? 'bg-purple-600 text-white shadow-xs font-bold'
+                                            : 'text-slate-600 hover:bg-purple-50 hover:text-purple-700'
+                                        }`}
+                                      >
+                                        ☕ Rest
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStatusChange(l.id, 'home')}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-md transition cursor-pointer flex items-center gap-1 ${
+                                          state.status === 'home'
+                                            ? 'bg-blue-600 text-white shadow-xs font-bold'
+                                            : 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+                                        }`}
+                                      >
+                                        🏠 Home
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td className="py-3.5 px-4">
+                                    <div className="relative">
+                                      <span className="absolute left-2.5 top-1.5 text-xs text-slate-400 font-mono">₹</span>
+                                      <input
+                                        type="number"
+                                        value={state.advance || ''}
+                                        onChange={(e) => handleAdvanceChange(l.id, e.target.value)}
+                                        placeholder="0"
+                                        className="w-full border border-slate-200 rounded-lg pl-6 pr-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 font-mono text-slate-700"
+                                      />
+                                    </div>
+                                  </td>
+                                  <td className="py-3.5 px-4">
+                                    <input
+                                      type="text"
+                                      value={state.note}
+                                      onChange={(e) => handleNoteChange(l.id, e.target.value)}
+                                      placeholder="e.g. For food / travel"
+                                      className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-600"
+                                      disabled={!state.advance}
+                                    />
+                                  </td>
+                                  <td className="py-3.5 px-4">
+                                    <select
+                                      value={state.paidBy || ''}
+                                      onChange={(e) => handlePaidByChange(l.id, e.target.value)}
+                                      className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700 disabled:opacity-50"
+                                      disabled={!state.advance}
+                                    >
+                                      <option value="">Select Payer</option>
+                                      {payers.map(p => (
+                                        <option key={p.id} value={p.name}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleSaveAll}
+                          className="inline-flex items-center gap-2 bg-rose-900 hover:bg-rose-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition cursor-pointer shadow-sm hover:shadow"
+                        >
+                          <Save className="w-4 h-4" />
+                          Save Attendance & Daily Advances
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </>

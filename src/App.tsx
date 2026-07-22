@@ -33,6 +33,7 @@ import Dashboard from './components/Dashboard';
 import SiteDiary from './components/SiteDiary';
 import DelayWeatherTracker from './components/DelayWeatherTracker';
 import DailyExpensesTracker from './components/DailyExpensesTracker';
+import BackupPromptBanner from './components/BackupPromptBanner';
 
 import {
   Briefcase,
@@ -85,6 +86,45 @@ export default function App() {
 
   // Food Expense Calculation custom start date
   const [foodCalculationStartDate, setFoodCalculationStartDate] = useState<string>('');
+
+  // Backup tracking state
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(() => {
+    return localStorage.getItem('last_backup_date');
+  });
+
+  const handleExportBackup = () => {
+    const data = {
+      version: 1,
+      timestamp: new Date().toISOString(),
+      projects,
+      labours,
+      attendanceRecords,
+      advanceRecords,
+      paymentRecords,
+      materials,
+      gstRecords,
+      siteDiaries,
+      delayWeatherLogs,
+      hotelAdvances,
+      foodLogs,
+      payers,
+      dailyExpenses,
+      foodCalculationStartDate
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const nowIso = new Date().toISOString();
+    const dateStr = nowIso.split('T')[0];
+    link.download = `Construction_Manager_Full_Backup_${dateStr}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+
+    localStorage.setItem('last_backup_date', nowIso);
+    setLastBackupDate(nowIso);
+  };
 
   // Syncing and network state
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
@@ -891,38 +931,61 @@ export default function App() {
       await clearStore('daily_expenses');
       await clearStore('payers');
 
+      // Key fallbacks for backwards compatibility and server schema compatibility
+      const pList = backupData.projects || [];
+      const lList = backupData.labours || [];
+      const attList = backupData.attendanceRecords || backupData.attendance || [];
+      const advList = backupData.advanceRecords || backupData.advances || [];
+      const payList = backupData.paymentRecords || backupData.payments || [];
+      const matList = backupData.materials || [];
+      const haList = backupData.hotelAdvances || backupData.hotel_advances || [];
+      const flList = backupData.foodLogs || backupData.food_logs || [];
+      const gstList = backupData.gstRecords || backupData.gst_records || [];
+      const sdList = backupData.siteDiaries || backupData.site_diaries || [];
+      const dwList = backupData.delayWeatherLogs || backupData.delay_weather_logs || [];
+      const expList = backupData.dailyExpenses || backupData.daily_expenses || [];
+      const payersList = backupData.payers || [];
+
       // Populate database using ultra-fast bulk operations
-      await putItems('projects', backupData.projects || []);
-      await putItems('labours', backupData.labours || []);
-      await putItems('attendance', backupData.attendanceRecords || []);
-      await putItems('advances', backupData.advanceRecords || []);
-      await putItems('payments', backupData.paymentRecords || []);
-      await putItems('materials', backupData.materials || []);
-      await putItems('hotel_advances', backupData.hotelAdvances || []);
-      await putItems('food_logs', backupData.foodLogs || []);
-      await putItems('gst_records', backupData.gstRecords || []);
-      await putItems('site_diaries', backupData.siteDiaries || []);
-      await putItems('delay_weather_logs', backupData.delayWeatherLogs || []);
-      await putItems('daily_expenses', backupData.dailyExpenses || []);
-      await putItems('payers', backupData.payers || []);
+      await putItems('projects', pList);
+      await putItems('labours', lList);
+      await putItems('attendance', attList);
+      await putItems('advances', advList);
+      await putItems('payments', payList);
+      await putItems('materials', matList);
+      await putItems('hotel_advances', haList);
+      await putItems('food_logs', flList);
+      await putItems('gst_records', gstList);
+      await putItems('site_diaries', sdList);
+      await putItems('delay_weather_logs', dwList);
+      await putItems('daily_expenses', expList);
+      await putItems('payers', payersList);
 
       // Reload state
-      setProjects(backupData.projects || []);
-      setLabours(backupData.labours || []);
-      setAttendanceRecords(backupData.attendanceRecords || []);
-      setAdvanceRecords(backupData.advanceRecords || []);
-      setPaymentRecords(backupData.paymentRecords || []);
-      setMaterials(backupData.materials || []);
-      setHotelAdvances(backupData.hotelAdvances || []);
-      setFoodLogs(backupData.foodLogs || []);
-      setGstRecords(backupData.gstRecords || []);
-      setSiteDiaries(backupData.siteDiaries || []);
-      setDelayWeatherLogs(backupData.delayWeatherLogs || []);
-      setDailyExpenses(backupData.dailyExpenses || []);
-      setPayers(backupData.payers || []);
+      setProjects(pList);
+      setLabours(lList);
+      setAttendanceRecords(attList);
+      setAdvanceRecords(advList);
+      setPaymentRecords(payList);
+      setMaterials(matList);
+      setHotelAdvances(haList);
+      setFoodLogs(flList);
+      setGstRecords(gstList);
+      setSiteDiaries(sdList);
+      setDelayWeatherLogs(dwList);
+      setDailyExpenses(expList);
+      setPayers(payersList);
 
-      if (backupData.projects && backupData.projects.length > 0) {
-        setActiveProjectId(backupData.projects[0].id);
+      if (backupData.foodCalculationStartDate) {
+        setFoodCalculationStartDate(backupData.foodCalculationStartDate);
+      }
+
+      const nowIso = new Date().toISOString();
+      localStorage.setItem('last_backup_date', nowIso);
+      setLastBackupDate(nowIso);
+
+      if (pList.length > 0) {
+        setActiveProjectId(pList[0].id);
       } else {
         setActiveProjectId(null);
       }
@@ -1289,6 +1352,10 @@ export default function App() {
 
         {/* Content Panel Area */}
         <main className="flex-1 min-w-0 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+          <BackupPromptBanner
+            onExportBackup={handleExportBackup}
+            lastBackupDate={lastBackupDate}
+          />
           {activeTab === 'dashboard' && (
             <Dashboard
               projects={projects}
@@ -1398,6 +1465,7 @@ export default function App() {
               payers={payers}
               dailyExpenses={dailyExpenses}
               onImportBackup={handleImportBackup}
+              onExportBackup={handleExportBackup}
               foodCalculationStartDate={foodCalculationStartDate}
             />
           )}

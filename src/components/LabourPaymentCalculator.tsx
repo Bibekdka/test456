@@ -238,6 +238,58 @@ export default function LabourPaymentCalculator({
     }
   };
 
+  // Monthly Payouts Breakdown calculation
+  const [showMonthlyPayoutDetails, setShowMonthlyPayoutDetails] = useState(false);
+
+  const monthlyPayoutData = useMemo(() => {
+    const monthsMap = new Map<string, { monthKey: string; monthLabel: string; payoutsAmount: number; payoutsCount: number; advancesAmount: number; totalDisbursed: number }>();
+
+    projectPayments.forEach(p => {
+      if (!p.date || p.date.length < 7) return;
+      const monthKey = p.date.substring(0, 7);
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          payoutsAmount: 0,
+          payoutsCount: 0,
+          advancesAmount: 0,
+          totalDisbursed: 0
+        });
+      }
+      const obj = monthsMap.get(monthKey)!;
+      obj.payoutsAmount += p.amountPaid || 0;
+      obj.payoutsCount += 1;
+      obj.totalDisbursed += p.amountPaid || 0;
+    });
+
+    projectAdvances.forEach(a => {
+      if (!a.date || a.date.length < 7) return;
+      const monthKey = a.date.substring(0, 7);
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          payoutsAmount: 0,
+          payoutsCount: 0,
+          advancesAmount: 0,
+          totalDisbursed: 0
+        });
+      }
+      const obj = monthsMap.get(monthKey)!;
+      obj.advancesAmount += a.amount || 0;
+      obj.totalDisbursed += a.amount || 0;
+    });
+
+    return Array.from(monthsMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [projectPayments, projectAdvances]);
+
   return (
     <div id="payment-calculator-section" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -277,6 +329,67 @@ export default function LabourPaymentCalculator({
             Unified Payments Ledger
           </button>
         </div>
+      </div>
+
+      {/* Monthly Wage Payouts Breakdown Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowMonthlyPayoutDetails(!showMonthlyPayoutDetails)}>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                Monthly Wage Payouts & Disbursed Advances
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {monthlyPayoutData.length} Months Logged
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-500">Historical month-by-month cash payouts paid to labourers and advances disbursed.</p>
+            </div>
+          </div>
+          <button className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
+            {showMonthlyPayoutDetails ? 'Hide Monthly Table ▲' : 'View Monthly Breakdown ▼'}
+          </button>
+        </div>
+
+        {showMonthlyPayoutDetails && (
+          <div className="overflow-x-auto border-t border-slate-100 pt-3">
+            {monthlyPayoutData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No wage payouts or advances disbursed yet.</p>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                    <th className="p-2.5">Month</th>
+                    <th className="p-2.5 text-right font-bold text-emerald-700">Wage Payouts Paid (₹)</th>
+                    <th className="p-2.5 text-right font-semibold text-rose-700">Advances Given (₹)</th>
+                    <th className="p-2.5 text-right font-black text-slate-900 bg-slate-50/50">Total Cash Disbursed (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {monthlyPayoutData.map((m) => (
+                    <tr key={m.monthKey} className="hover:bg-slate-50/80">
+                      <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                        {m.monthLabel}
+                      </td>
+                      <td className="p-2.5 text-right font-semibold text-emerald-800">
+                        ₹{m.payoutsAmount.toLocaleString('en-IN')} <span className="text-[9px] text-slate-400 font-sans">({m.payoutsCount} transactions)</span>
+                      </td>
+                      <td className="p-2.5 text-right font-medium text-rose-700">
+                        ₹{m.advancesAmount.toLocaleString('en-IN')}
+                      </td>
+                      <td className="p-2.5 text-right font-black text-slate-900 bg-emerald-50/20">
+                        ₹{m.totalDisbursed.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {activeSubTab === 'calculator' ? (

@@ -305,6 +305,35 @@ export default function MaterialTracker({
     return remaining <= m.alertThreshold;
   });
 
+  // Monthly Material Expenses calculation
+  const [showMonthlyMaterialDetails, setShowMonthlyMaterialDetails] = useState(false);
+
+  const monthlyMaterialData = React.useMemo(() => {
+    const monthsMap = new Map<string, { monthKey: string; monthLabel: string; totalCost: number; itemsCount: number; suppliersCount: number }>();
+
+    projectMaterials.forEach(m => {
+      if (!m.dateBought || m.dateBought.length < 7) return;
+      const monthKey = m.dateBought.substring(0, 7); // YYYY-MM
+      if (!monthsMap.has(monthKey)) {
+        const [y, mon] = monthKey.split('-');
+        const d = new Date(Number(y), Number(mon) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          totalCost: 0,
+          itemsCount: 0,
+          suppliersCount: 0
+        });
+      }
+      const obj = monthsMap.get(monthKey)!;
+      obj.totalCost += m.cost || 0;
+      obj.itemsCount += 1;
+    });
+
+    return Array.from(monthsMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [projectMaterials]);
+
   return (
     <div id="material-tracker-section" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -348,6 +377,63 @@ export default function MaterialTracker({
           </div>
         </div>
       )}
+
+      {/* Monthly Material Expenses Breakdown Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowMonthlyMaterialDetails(!showMonthlyMaterialDetails)}>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                Monthly Material Acquisition Outlay
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {monthlyMaterialData.length} Months Logged
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-500">Historical month-by-month material purchases, total intake costs, and order counts.</p>
+            </div>
+          </div>
+          <button className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
+            {showMonthlyMaterialDetails ? 'Hide Monthly Table ▲' : 'View Monthly Breakdown ▼'}
+          </button>
+        </div>
+
+        {showMonthlyMaterialDetails && (
+          <div className="overflow-x-auto border-t border-slate-100 pt-3">
+            {monthlyMaterialData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No material intake purchases recorded yet.</p>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                    <th className="p-2.5">Month</th>
+                    <th className="p-2.5 text-center">Intakes Logged</th>
+                    <th className="p-2.5 text-right font-black">Total Purchases Cost (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {monthlyMaterialData.map((m) => (
+                    <tr key={m.monthKey} className="hover:bg-slate-50/80">
+                      <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                        {m.monthLabel}
+                      </td>
+                      <td className="p-2.5 text-center text-slate-700 font-semibold font-sans">
+                        {m.itemsCount} material intakes
+                      </td>
+                      <td className="p-2.5 text-right font-black text-emerald-950 bg-emerald-50/30">
+                        ₹{m.totalCost.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
 
       {showAddForm && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">

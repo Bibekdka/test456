@@ -174,6 +174,88 @@ export default function CostAnalysis({
     return totalAdv - totalFood;
   }
 
+  // Monthly Master Financial Breakdown calculation
+  const monthlyMasterData = React.useMemo(() => {
+    const monthsMap = new Map<string, {
+      monthKey: string;
+      monthLabel: string;
+      wages: number;
+      advances: number;
+      materials: number;
+      food: number;
+      dailyExp: number;
+      total: number;
+    }>();
+
+    const getMonthObj = (dateStr: string) => {
+      if (!dateStr || dateStr.length < 7) return null;
+      const monthKey = dateStr.substring(0, 7);
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          wages: 0,
+          advances: 0,
+          materials: 0,
+          food: 0,
+          dailyExp: 0,
+          total: 0
+        });
+      }
+      return monthsMap.get(monthKey)!;
+    };
+
+    projectAttendance.forEach(att => {
+      const obj = getMonthObj(att.date);
+      if (obj) {
+        const labour = labours.find(l => l.id === att.labourId);
+        const wage = labour ? labour.perDayWage : 0;
+        if (att.status === 'present') obj.wages += wage;
+        else if (att.status === 'half_day') obj.wages += wage / 2;
+      }
+    });
+
+    projectAdvances.forEach(adv => {
+      const obj = getMonthObj(adv.date);
+      if (obj) obj.advances += adv.amount || 0;
+    });
+
+    projectMaterials.forEach(mat => {
+      const obj = getMonthObj(mat.dateBought);
+      if (obj) obj.materials += mat.cost || 0;
+    });
+
+    if (useAutoFoodCalc) {
+      projectAttendance.forEach(att => {
+        if (att.status === 'present' || att.status === 'half_day') {
+          const obj = getMonthObj(att.date);
+          if (obj) obj.food += (att.status === 'present' ? 1 : 0.5) * 100;
+        }
+      });
+    } else {
+      projectFoodLogs.forEach(f => {
+        const obj = getMonthObj(f.date);
+        if (obj) obj.food += (f.mealsCount || 1) * (f.cost || 0);
+      });
+    }
+
+    const projectDailyExp = dailyExpenses.filter(e => e.projectId === activeProject.id);
+    projectDailyExp.forEach(exp => {
+      const obj = getMonthObj(exp.date);
+      if (obj) obj.dailyExp += exp.amount || 0;
+    });
+
+    const list = Array.from(monthsMap.values()).map(m => {
+      m.total = m.wages + m.materials + m.food + m.dailyExp;
+      return m;
+    });
+
+    return list.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [projectAttendance, projectAdvances, projectMaterials, projectFoodLogs, dailyExpenses, useAutoFoodCalc, activeProject.id, labours]);
+
   return (
     <div className="space-y-6">
       {/* Title */}
@@ -466,6 +548,70 @@ export default function CostAnalysis({
           </div>
         </div>
 
+      </div>
+
+      {/* Comprehensive Monthly Expenses Master Table */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+              <Calendar className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                Monthly Site Expenses Master Ledger
+                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                  {monthlyMasterData.length} Months Tracked
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500">Cross-sectional monthly financial summary combining Labour Wages, Materials, Food, and Daily Site Expenses.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          {monthlyMasterData.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-6">No site activity or expenses recorded across any section yet.</p>
+          ) : (
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-y border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                  <th className="p-3">Month</th>
+                  <th className="p-3 text-right">Attendance Wages (₹)</th>
+                  <th className="p-3 text-right">Material Intake (₹)</th>
+                  <th className="p-3 text-right">Food Mess (₹)</th>
+                  <th className="p-3 text-right">Daily & Misc (₹)</th>
+                  <th className="p-3 text-right font-black text-slate-900 bg-slate-100/60">Total Monthly Outlay (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-mono">
+                {monthlyMasterData.map((m) => (
+                  <tr key={m.monthKey} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="p-3 font-bold font-sans text-slate-800 flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 inline-block" />
+                      {m.monthLabel}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-slate-800">
+                      ₹{m.wages.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-amber-700">
+                      ₹{m.materials.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-indigo-700">
+                      ₹{m.food.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-3 text-right font-semibold text-emerald-700">
+                      ₹{m.dailyExp.toLocaleString('en-IN')}
+                    </td>
+                    <td className="p-3 text-right font-black text-slate-900 bg-slate-50/80">
+                      ₹{m.total.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -319,6 +319,62 @@ export default function FoodTracker({
     return `${l.name}${roleBadge}`;
   };
 
+  // Monthly Food Expenses Breakdown calculation
+  const [showMonthlyFoodDetails, setShowMonthlyFoodDetails] = useState(false);
+
+  const monthlyFoodData = React.useMemo(() => {
+    const monthsMap = new Map<string, { monthKey: string; monthLabel: string; mealsCount: number; manualCost: number; advances: number; attendanceDays: number; autoCost: number }>();
+
+    const getMonthObj = (dateStr: string) => {
+      if (!dateStr || dateStr.length < 7) return null;
+      const monthKey = dateStr.substring(0, 7); // YYYY-MM
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          mealsCount: 0,
+          manualCost: 0,
+          advances: 0,
+          attendanceDays: 0,
+          autoCost: 0
+        });
+      }
+      return monthsMap.get(monthKey)!;
+    };
+
+    projectFoodLogs.forEach(f => {
+      const obj = getMonthObj(f.date);
+      if (obj) {
+        obj.mealsCount += f.mealsCount || 1;
+        obj.manualCost += (f.mealsCount || 1) * (f.cost || 0);
+      }
+    });
+
+    projectAdvances.forEach(h => {
+      const obj = getMonthObj(h.date);
+      if (obj) {
+        obj.advances += h.amount || 0;
+      }
+    });
+
+    const projectAttendance = attendanceRecords.filter(a => a.projectId === activeProject?.id);
+    projectAttendance.forEach(att => {
+      if (att.status === 'present' || att.status === 'half_day') {
+        const obj = getMonthObj(att.date);
+        if (obj) {
+          const dayVal = att.status === 'present' ? 1 : 0.5;
+          obj.attendanceDays += dayVal;
+          obj.autoCost += dayVal * 100;
+        }
+      }
+    });
+
+    return Array.from(monthsMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [projectFoodLogs, projectAdvances, attendanceRecords, activeProject]);
+
   return (
     <div className="space-y-6">
       {/* Title Header */}
@@ -418,6 +474,74 @@ export default function FoodTracker({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Monthly Food Expenses Breakdown Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowMonthlyFoodDetails(!showMonthlyFoodDetails)}>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                Monthly Food & Hotel Outlay Breakdown
+                <span className="bg-indigo-100 text-indigo-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {monthlyFoodData.length} Months Logged
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-500">Month-by-month food mess expenses, hotel advance payments, and auto-accruals.</p>
+            </div>
+          </div>
+          <button className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer">
+            {showMonthlyFoodDetails ? 'Hide Monthly Table ▲' : 'View Monthly Breakdown ▼'}
+          </button>
+        </div>
+
+        {showMonthlyFoodDetails && (
+          <div className="overflow-x-auto border-t border-slate-100 pt-3">
+            {monthlyFoodData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No monthly food or advance records logged yet.</p>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                    <th className="p-2.5">Month</th>
+                    <th className="p-2.5 text-right">Hotel Advances Paid (₹)</th>
+                    <th className="p-2.5 text-right">Manual Food Logs (₹)</th>
+                    <th className="p-2.5 text-right">Auto Attendance Food (₹)</th>
+                    <th className="p-2.5 text-right font-black">Net Food Outlay (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {monthlyFoodData.map((m) => {
+                    const effectiveOutlay = useAutoFoodCalc ? m.autoCost : m.manualCost;
+                    return (
+                      <tr key={m.monthKey} className="hover:bg-slate-50/80">
+                        <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                          {m.monthLabel}
+                        </td>
+                        <td className="p-2.5 text-right text-indigo-700 font-semibold">
+                          ₹{m.advances.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-2.5 text-right text-amber-700">
+                          ₹{m.manualCost.toLocaleString('en-IN')} <span className="text-[9px] text-slate-400 font-sans">({m.mealsCount} meals)</span>
+                        </td>
+                        <td className="p-2.5 text-right text-emerald-700">
+                          ₹{m.autoCost.toLocaleString('en-IN')} <span className="text-[9px] text-slate-400 font-sans">({m.attendanceDays} days)</span>
+                        </td>
+                        <td className="p-2.5 text-right font-black text-slate-900 bg-slate-50/50">
+                          ₹{effectiveOutlay.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {activeSubTab === 'auto-food' && (

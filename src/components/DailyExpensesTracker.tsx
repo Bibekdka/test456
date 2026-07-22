@@ -273,6 +273,39 @@ export default function DailyExpensesTracker({
     return found ? found.label : val;
   };
 
+  // Monthly Daily Expenses Breakdown calculation
+  const [showMonthlyExpenseDetails, setShowMonthlyExpenseDetails] = useState(false);
+
+  const monthlyDailyExpenseData = React.useMemo(() => {
+    const monthsMap = new Map<string, { monthKey: string; monthLabel: string; totalAmount: number; labourAmount: number; miscAmount: number; count: number }>();
+
+    projectExpenses.forEach(e => {
+      if (!e.date || e.date.length < 7) return;
+      const monthKey = e.date.substring(0, 7); // YYYY-MM
+      if (!monthsMap.has(monthKey)) {
+        const [y, m] = monthKey.split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        const monthLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+        monthsMap.set(monthKey, {
+          monthKey,
+          monthLabel,
+          totalAmount: 0,
+          labourAmount: 0,
+          miscAmount: 0,
+          count: 0
+        });
+      }
+      const obj = monthsMap.get(monthKey)!;
+      const amt = e.amount || 0;
+      obj.totalAmount += amt;
+      if (e.category === 'labour_expense') obj.labourAmount += amt;
+      else obj.miscAmount += amt;
+      obj.count += 1;
+    });
+
+    return Array.from(monthsMap.values()).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+  }, [projectExpenses]);
+
   return (
     <div className="space-y-6 flex-1">
       {/* Upper Title Section */}
@@ -336,6 +369,67 @@ export default function DailyExpensesTracker({
             <p className="text-[10px] text-amber-600 font-semibold">{projectExpenses.filter(e => e.category === 'misc_transaction').length} transactions recorded</p>
           </div>
         </div>
+      </div>
+
+      {/* Monthly Site Expenses Breakdown Card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-3">
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setShowMonthlyExpenseDetails(!showMonthlyExpenseDetails)}>
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                Monthly Site Outlay & Misc Expenses
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
+                  {monthlyDailyExpenseData.length} Months Logged
+                </span>
+              </h3>
+              <p className="text-[10px] text-slate-500">Historical month-by-month site operational expenses, worker tea/snacks, and misc transactions.</p>
+            </div>
+          </div>
+          <button className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer">
+            {showMonthlyExpenseDetails ? 'Hide Monthly Table ▲' : 'View Monthly Breakdown ▼'}
+          </button>
+        </div>
+
+        {showMonthlyExpenseDetails && (
+          <div className="overflow-x-auto border-t border-slate-100 pt-3">
+            {monthlyDailyExpenseData.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4">No site expenses recorded yet.</p>
+            ) : (
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                    <th className="p-2.5">Month</th>
+                    <th className="p-2.5 text-right">Labour Expenses (Tea/Tools) (₹)</th>
+                    <th className="p-2.5 text-right">Misc Site Transactions (₹)</th>
+                    <th className="p-2.5 text-right font-black">Total Month Outlay (₹)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono">
+                  {monthlyDailyExpenseData.map((m) => (
+                    <tr key={m.monthKey} className="hover:bg-slate-50/80">
+                      <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+                        {m.monthLabel}
+                      </td>
+                      <td className="p-2.5 text-right text-indigo-700 font-semibold">
+                        ₹{m.labourAmount.toLocaleString('en-IN')}
+                      </td>
+                      <td className="p-2.5 text-right text-amber-700 font-semibold">
+                        ₹{m.miscAmount.toLocaleString('en-IN')}
+                      </td>
+                      <td className="p-2.5 text-right font-black text-slate-900 bg-slate-50/50">
+                        ₹{m.totalAmount.toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Expense Form Container */}
