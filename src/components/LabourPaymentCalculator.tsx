@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, getLabourDaysWorked } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, getLabourDaysWorked, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
   IndianRupee, 
@@ -141,11 +141,17 @@ export default function LabourPaymentCalculator({
     alert(`Payment of ₹${amount} successfully recorded for ${labour.name}`);
   };
 
-  // We want to calculate payments for ALL labours who have any recorded attendance, advance or payment in this project, plus active labours
+  // Calculate payments for labours who belong to or have history in this specific project site
   const relevantLabours = labours.filter(l => {
-    const stats = getLabourStats(l);
-    const hasHistory = stats.daysWorked > 0 || stats.totalAdvances > 0 || stats.totalPaid > 0;
-    return l.status === 'active' || hasHistory;
+    return isLabourInProjectScope(
+      l,
+      activeProject.id,
+      [],
+      attendanceRecords,
+      [],
+      advanceRecords,
+      paymentRecords
+    );
   });
 
   // Combine all payment transactions (both wage payouts and cash advances) into a unified ledger

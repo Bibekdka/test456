@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer } from '../types';
+import { Project, Labour, Attendance, Advance, AttendanceStatus, Payer, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { Calendar, Save, CheckCircle, HelpCircle, XCircle, IndianRupee, Plus, Trash2, ArrowRightLeft, Users, UserPlus, Coins, Pencil, ChevronLeft, ChevronRight, Coffee, CalendarDays, UserX } from 'lucide-react';
 import AttendanceCalendar from './AttendanceCalendar';
@@ -69,18 +69,29 @@ export default function AttendanceTracker({
   // Toggle state for displaying former workers who have left work
   const [showLeftWorkersSection, setShowLeftWorkersSection] = useState(false);
 
+  // Filter labours by active project site
+  const projectLabours = labours.filter(l => !activeProject || isLabourInProjectScope(
+    l,
+    activeProject.id,
+    [],
+    attendanceRecords,
+    [],
+    advanceRecords,
+    []
+  ));
+
   // Active labours who are currently working and joined on or before selectedDate
-  const activeLabours = labours.filter(l => {
+  const activeLabours = projectLabours.filter(l => {
     if (l.status === 'left') return false; // Exclude anyone who has left
     if (l.joinedDate && l.joinedDate > selectedDate) return false; // Joined after selected date
     return true;
   });
 
   // Personnel who have left work
-  const leftLabours = labours.filter(l => l.status === 'left');
+  const leftLabours = projectLabours.filter(l => l.status === 'left');
 
   // Labours who are registered active but hidden because their joining date is after selectedDate
-  const hiddenLabours = labours.filter(l => {
+  const hiddenLabours = projectLabours.filter(l => {
     return l.status !== 'left' && l.joinedDate && l.joinedDate > selectedDate;
   });
 

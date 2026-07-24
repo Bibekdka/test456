@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Project, Labour, FoodLog } from '../types';
+import { Project, Labour, FoodLog, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
   Calendar as CalendarIcon, 
@@ -68,15 +68,24 @@ export default function CustomerMealCalendar({
   const [isEditingJoinedDate, setIsEditingJoinedDate] = useState(false);
   const [editJoinedDateValue, setEditJoinedDateValue] = useState('');
 
-  // Filter & sort labours based on search, role, status & join date
+  // Filter & sort labours based on search, role, status, project scope & join date
   const filteredLabours = useMemo(() => {
     return labours
       .filter(l => {
+        const matchesProject = !activeProject || isLabourInProjectScope(
+          l,
+          activeProject.id,
+          [],
+          [],
+          foodLogs,
+          [],
+          []
+        );
         const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (l.contact && l.contact.includes(searchTerm));
         const matchesRole = roleFilter === 'all' || l.role === roleFilter || 
                             (roleFilter === 'worker' && (!l.role || l.role === 'worker'));
-        return matchesSearch && matchesRole;
+        return matchesProject && matchesSearch && matchesRole;
       })
       .sort((a, b) => {
         const aActive = a.status === 'active';
@@ -93,7 +102,7 @@ export default function CustomerMealCalendar({
         }
         return a.name.localeCompare(b.name);
       });
-  }, [labours, searchTerm, roleFilter]);
+  }, [labours, searchTerm, roleFilter, activeProject, foodLogs]);
 
   // Selected Labour Object
   const selectedLabour = useMemo(() => {
@@ -141,9 +150,13 @@ export default function CustomerMealCalendar({
     return `${currentYear}-${monthPadded}-${dayPadded}`;
   };
 
-  // Get food log for a specific labour and date string
+  // Get food log for a specific labour and date string (isolated to active project site)
   const getLogForPersonAndDate = (personId: string, dateStr: string): FoodLog | undefined => {
-    return foodLogs.find(f => f.labourId === personId && f.date === dateStr);
+    return foodLogs.find(f => 
+      f.labourId === personId && 
+      f.date === dateStr && 
+      (!activeProject || f.projectId === activeProject.id)
+    );
   };
 
   // Determine meal status for a specific log/date:

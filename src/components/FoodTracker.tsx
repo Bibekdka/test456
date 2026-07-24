@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays } from 'lucide-react';
 import CustomerMealCalendar from './CustomerMealCalendar';
@@ -106,21 +106,17 @@ export default function FoodTracker({
   // Filter lists for active project
   const projectAdvances = hotelAdvances.filter(a => a.projectId === activeProject.id);
   const projectFoodLogs = foodLogs.filter(f => f.projectId === activeProject.id);
-  const projectLabourIds = new Set(
-    attendanceRecords
-      .filter(a => a.projectId === activeProject.id)
-      .map(a => a.labourId)
-  );
+  
   const projectLabours = labours
-    .filter(l => {
-      if (projectLabourIds.has(l.id)) return true;
-      if (l.status === 'active') return true;
-      if (l.status === 'left' && l.joinedDate) {
-        const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
-        if (leftDate >= activeProject.startDate) return true;
-      }
-      return false;
-    })
+    .filter(l => isLabourInProjectScope(
+      l,
+      activeProject.id,
+      [],
+      attendanceRecords,
+      foodLogs,
+      [],
+      []
+    ))
     .sort((a, b) => {
       const aActive = a.status === 'active';
       const bActive = b.status === 'active';

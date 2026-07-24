@@ -4,18 +4,19 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, FoodLog, Payer, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, FoodLog, Payer, getAttendanceFoodDaysAndCost, getLabourDaysWorked, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
   Users, UserPlus, Phone, IndianRupee, Calendar, Trash2, Edit, 
   UserX, UserCheck, Archive, History, Plus, Search, Utensils, 
   FileSpreadsheet, ArrowUpDown, TrendingUp, Coins, CheckCircle2, 
-  Receipt, ClipboardList, Info, Trash
+  Receipt, ClipboardList, Info, Trash, Building2
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface LabourManagerProps {
   labours: Labour[];
+  projects?: Project[];
   onAddLabour: (labour: Labour) => void;
   onUpdateLabour: (labour: Labour) => void;
   onDeleteLabour: (id: string) => void;
@@ -34,6 +35,7 @@ interface LabourManagerProps {
 
 export default function LabourManager({
   labours,
+  projects = [],
   onAddLabour,
   onUpdateLabour,
   onDeleteLabour,
@@ -63,6 +65,10 @@ export default function LabourManager({
   const [joinedDate, setJoinedDate] = useState('');
   const [role, setRole] = useState<'worker' | 'contractor' | 'staff' | 'other'>('worker');
   const [isSalaryApplicable, setIsSalaryApplicable] = useState(true);
+  const [assignedProjectId, setAssignedProjectId] = useState<string>(activeProject?.id || '');
+
+  // Option to filter registry by active site vs all sites
+  const [showAllSitesWorkers, setShowAllSitesWorkers] = useState(false);
 
   // Form State for Recording Advances/Payments
   const [selectedLabourId, setSelectedLabourId] = useState('');
@@ -86,6 +92,7 @@ export default function LabourManager({
     setIsSalaryApplicable(true);
     setLeftDate('');
     setJoinedDate(new Date().toISOString().split('T')[0]);
+    setAssignedProjectId(activeProject?.id || '');
     setEditingLabour(null);
     setShowAddForm(true);
     document.getElementById('labour-manager-section')?.scrollIntoView({ behavior: 'smooth' });
@@ -101,6 +108,7 @@ export default function LabourManager({
     setIsSalaryApplicable(l.isSalaryApplicable !== undefined ? l.isSalaryApplicable : (l.perDayWage > 0));
     setLeftDate(l.leftDate || '');
     setJoinedDate(l.joinedDate || new Date().toISOString().split('T')[0]);
+    setAssignedProjectId(l.projectId || activeProject?.id || '');
     setShowAddForm(true);
     document.getElementById('labour-manager-section')?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -122,6 +130,7 @@ export default function LabourManager({
       isSalaryApplicable: isSalaryApplicable && wage > 0,
       leftDate: status === 'left' ? (leftDate || new Date().toISOString().split('T')[0]) : undefined,
       joinedDate: joinedDate || undefined,
+      projectId: assignedProjectId || activeProject?.id || undefined,
     };
 
     if (editingLabour) {
@@ -265,7 +274,19 @@ export default function LabourManager({
     setTrxPayerId('');
   };
 
-  const filteredLabours = labours.filter(l => l.status === activeTab);
+  const filteredLabours = labours.filter(l => {
+    if (l.status !== activeTab) return false;
+    if (showAllSitesWorkers || !activeProject) return true;
+    return isLabourInProjectScope(
+      l,
+      activeProject.id,
+      projects,
+      attendanceRecords,
+      foodLogs,
+      advanceRecords,
+      paymentRecords
+    );
+  });
 
   // Unified Transaction Ledger calculation for active tab 'payments_advances'
   const activeProjectPayments = activeProject ? paymentRecords.filter(p => p.projectId === activeProject.id) : [];
@@ -425,6 +446,25 @@ export default function LabourManager({
               {!isSalaryApplicable && (
                 <p className="text-[10px] text-slate-400 italic">No daily wages accrued. Person will be listed for hotel meals & advances.</p>
               )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                Assigned Construction Site
+              </label>
+              <select
+                value={assignedProjectId}
+                onChange={(e) => setAssignedProjectId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-slate-900 bg-white"
+              >
+                <option value="">General / Unassigned (Available across sites)</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    Site: {p.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

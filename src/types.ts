@@ -57,6 +57,61 @@ export interface Labour extends BaseEntity {
   joinedDate?: string; // date they joined work
   role?: PersonRole; // 'worker' | 'contractor' | 'staff' | 'other'
   isSalaryApplicable?: boolean;
+  projectId?: string; // Optional project/site ID where assigned or registered
+}
+
+/**
+ * Helper to check if a worker belongs to or has history in a specific project (or sub-sites scope).
+ */
+export function isLabourInProjectScope(
+  labour: Labour,
+  targetProjectId: string,
+  projects: Project[],
+  attendanceRecords: Attendance[] = [],
+  foodLogs: FoodLog[] = [],
+  advanceRecords: Advance[] = [],
+  paymentRecords: Payment[] = []
+): boolean {
+  if (!targetProjectId) return true;
+  const scopeSet = new Set(getProjectScopeIds(targetProjectId, projects));
+
+  // 1. Explicit project assignment
+  if (labour.projectId) {
+    if (scopeSet.has(labour.projectId)) return true;
+  }
+
+  // 2. Recorded history in this project scope
+  const hasAttendance = attendanceRecords.some(a => a.labourId === labour.id && scopeSet.has(a.projectId));
+  if (hasAttendance) return true;
+
+  const hasFood = foodLogs.some(f => f.labourId === labour.id && scopeIdsHas(scopeSet, f.projectId));
+  if (hasFood) return true;
+
+  const hasAdvance = advanceRecords.some(a => a.labourId === labour.id && scopeSet.has(a.projectId));
+  if (hasAdvance) return true;
+
+  const hasPayment = paymentRecords.some(p => p.labourId === labour.id && scopeSet.has(p.projectId));
+  if (hasPayment) return true;
+
+  // 3. Unassigned legacy worker (no projectId set):
+  // Check if they have records in OTHER projects. If they have records elsewhere, they don't belong here.
+  if (!labour.projectId) {
+    const hasHistoryElsewhere = 
+      attendanceRecords.some(a => a.labourId === labour.id && !scopeSet.has(a.projectId)) ||
+      foodLogs.some(f => f.labourId === labour.id && !scopeSet.has(f.projectId)) ||
+      advanceRecords.some(a => a.labourId === labour.id && !scopeSet.has(a.projectId)) ||
+      paymentRecords.some(p => p.labourId === labour.id && !scopeSet.has(p.projectId));
+
+    if (!hasHistoryElsewhere) {
+      return true; // Available for all if completely unassigned and no history elsewhere
+    }
+  }
+
+  return false;
+}
+
+function scopeIdsHas(set: Set<string>, pId?: string): boolean {
+  return pId ? set.has(pId) : false;
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'home' | 'pending' | 'rest';

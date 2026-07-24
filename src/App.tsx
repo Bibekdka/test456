@@ -1425,6 +1425,7 @@ export default function App() {
           {activeTab === 'labours' && (
             <LabourManager
               labours={labours}
+              projects={projects}
               onAddLabour={handleAddLabour}
               onUpdateLabour={handleUpdateLabour}
               onDeleteLabour={handleDeleteLabour}
