@@ -133,10 +133,10 @@ export function getItemsByLabourId<T>(storeName: string, labourId: string): Prom
   return getItemsByIndex<T>(storeName, 'labourId', labourId);
 }
 
-export function putItem<T extends { id: string; updatedAt?: number }>(storeName: string, item: T): Promise<void> {
+export function putItem<T extends { id: string; updatedAt?: number }>(storeName: string, item: T, preserveTimestamp = false): Promise<void> {
   const preparedItem = {
     ...item,
-    updatedAt: item.updatedAt || Date.now()
+    updatedAt: preserveTimestamp ? (item.updatedAt || Date.now()) : Date.now()
   };
   return new Promise((resolve, reject) => {
     getStore(storeName, 'readwrite')
@@ -178,7 +178,7 @@ export function deleteItems(storeName: string, ids: string[]): Promise<void> {
   });
 }
 
-export function putItems<T extends { id: string; updatedAt?: number }>(storeName: string, items: T[]): Promise<void> {
+export function putItems<T extends { id: string; updatedAt?: number }>(storeName: string, items: T[], preserveTimestamp = false): Promise<void> {
   if (items.length === 0) return Promise.resolve();
   const now = Date.now();
   return initDB().then((db) => {
@@ -192,7 +192,7 @@ export function putItems<T extends { id: string; updatedAt?: number }>(storeName
       items.forEach((item) => {
         const prepared = {
           ...item,
-          updatedAt: item.updatedAt || now
+          updatedAt: preserveTimestamp ? (item.updatedAt || now) : now
         };
         store.put(prepared);
       });

@@ -36,8 +36,7 @@ export default function FoodTracker({
   onFoodCalculationStartDateChange,
 }: FoodTrackerProps) {
   // Filters and Forms State - Manual Mess Flow default
-  const [activeSubTab, setActiveSubTab] = useState<'meals' | 'calendar' | 'advances' | 'auto-food'>('meals');
-  const [useAutoFoodCalc, setUseAutoFoodCalc] = useState(false);
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'meals' | 'advances'>('calendar');
   
   // Quick Daily Mess Logger State
   const [quickMessDate, setQuickMessDate] = useState(new Date().toISOString().split('T')[0]);
@@ -141,7 +140,7 @@ export default function FoodTracker({
   const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
   const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
 
-  const totalFoodCost = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
+  const totalFoodCost = totalManualFoodCost;
   const remainingBalance = totalAdvances - totalFoodCost;
   const activeLabours = labours.filter(l => l.status === 'active');
 
@@ -388,29 +387,23 @@ export default function FoodTracker({
         </div>
         <div className="flex bg-slate-100 rounded-lg p-1 text-xs font-semibold flex-wrap gap-1">
           <button
+            onClick={() => setActiveSubTab('calendar')}
+            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${activeSubTab === 'calendar' ? 'bg-white shadow-xs text-indigo-700 font-extrabold' : 'text-slate-500 hover:text-slate-900'}`}
+          >
+            <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
+            Meal Calendar
+          </button>
+          <button
             onClick={() => setActiveSubTab('meals')}
             className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'meals' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
           >
             Daily Meals & Mess Log
           </button>
           <button
-            onClick={() => setActiveSubTab('calendar')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${activeSubTab === 'calendar' ? 'bg-white shadow-xs text-indigo-700 font-extrabold' : 'text-slate-500 hover:text-slate-900'}`}
-          >
-            <CalendarDays className="w-3.5 h-3.5 text-indigo-600" />
-            Meal Calendar (Green/Red/Grey)
-          </button>
-          <button
             onClick={() => setActiveSubTab('advances')}
             className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'advances' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
           >
             Hotel Advances ({projectAdvances.length})
-          </button>
-          <button
-            onClick={() => setActiveSubTab('auto-food')}
-            className={`px-3 py-1.5 rounded-md transition ${activeSubTab === 'auto-food' ? 'bg-white shadow-xs text-slate-900 font-bold' : 'text-slate-500 hover:text-slate-900'}`}
-          >
-            Auto Calc (₹100/Day)
           </button>
         </div>
       </div>
@@ -438,25 +431,14 @@ export default function FoodTracker({
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                Total Food Cost {useAutoFoodCalc ? '(Auto ₹100/Day)' : '(Manual Logs)'}
+                Total Food Cost (Logged Meals)
               </span>
               <span className="text-lg font-extrabold text-slate-800 flex items-center">
                 <IndianRupee className="w-4 h-4 inline" /> {totalFoodCost.toLocaleString()}
-                {useAutoFoodCalc ? (
-                  <span className="text-xs text-slate-500 font-normal ml-1">({projectLabours.length} workers)</span>
-                ) : (
-                  <span className="text-xs text-slate-500 font-normal ml-1">({projectFoodLogs.reduce((sum, f) => sum + f.mealsCount, 0)} meals)</span>
-                )}
+                <span className="text-xs text-slate-500 font-normal ml-1">({projectFoodLogs.reduce((sum, f) => sum + f.mealsCount, 0)} meals)</span>
               </span>
             </div>
           </div>
-          <button
-            onClick={() => setUseAutoFoodCalc(!useAutoFoodCalc)}
-            className="text-[10px] bg-white border border-slate-200 text-slate-600 hover:text-slate-900 font-bold px-2.5 py-1.5 rounded-lg shadow-xs transition cursor-pointer"
-            title="Switch calculation method"
-          >
-            Switch to {useAutoFoodCalc ? 'Manual' : 'Auto'}
-          </button>
         </div>
 
         {/* Remaining Advance Balance */}
@@ -515,7 +497,7 @@ export default function FoodTracker({
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono">
                   {monthlyFoodData.map((m) => {
-                    const effectiveOutlay = useAutoFoodCalc ? m.autoCost : m.manualCost;
+                    const effectiveOutlay = m.manualCost;
                     return (
                       <tr key={m.monthKey} className="hover:bg-slate-50/80">
                         <td className="p-2.5 font-bold font-sans text-slate-800 flex items-center gap-1.5">

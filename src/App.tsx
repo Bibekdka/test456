@@ -20,6 +20,37 @@ import { generateId } from './utils/id';
 import { performIncrementalSync, performFullSync } from './utils/syncManager';
 import { ToastProvider } from './components/ToastContainer';
 
+function mergeStoreItems<T extends { id: string; updatedAt?: number }>(
+  localItems: T[],
+  serverItems: T[]
+): { merged: T[]; hasLocalChanges: boolean } {
+  const map = new Map<string, T>();
+  let hasLocalChanges = false;
+
+  // First populate map with server items
+  serverItems.forEach(item => map.set(item.id, item));
+
+  // Merge local items
+  localItems.forEach(localItem => {
+    const serverItem = map.get(localItem.id);
+    if (!serverItem) {
+      // Local item doesn't exist on server -> keep local version
+      map.set(localItem.id, localItem);
+      hasLocalChanges = true;
+    } else {
+      const localTs = localItem.updatedAt || 0;
+      const serverTs = serverItem.updatedAt || 0;
+      if (localTs > serverTs) {
+        // Local version is newer -> keep local version
+        map.set(localItem.id, localItem);
+        hasLocalChanges = true;
+      }
+    }
+  });
+
+  return { merged: Array.from(map.values()), hasLocalChanges };
+}
+
 import ProjectManager from './components/ProjectManager';
 import LabourManager from './components/LabourManager';
 import AttendanceTracker from './components/AttendanceTracker';
@@ -250,49 +281,87 @@ export default function App() {
           const serverHasData = serverDb.projects && serverDb.projects.length > 0;
 
           if (serverHasData) {
-            // Server has data, overwrite local IndexedDB to keep in sync
-            await clearStore('projects');
-            await clearStore('labours');
-            await clearStore('attendance');
-            await clearStore('advances');
-            await clearStore('payments');
-            await clearStore('materials');
-            await clearStore('hotel_advances');
-            await clearStore('food_logs');
-            await clearStore('gst_records');
-            await clearStore('payers');
-            await clearStore('site_diaries');
-            await clearStore('delay_weather_logs');
-            await clearStore('daily_expenses');
+            // Smart 2-way merge of local IndexedDB and server data
+            const pRes = mergeStoreItems(pList, serverDb.projects || []);
+            const lRes = mergeStoreItems(lList, serverDb.labours || []);
+            const attRes = mergeStoreItems(attList, serverDb.attendance || []);
+            const advRes = mergeStoreItems(advList, serverDb.advances || []);
+            const payRes = mergeStoreItems(payList, serverDb.payments || []);
+            const matRes = mergeStoreItems(matList, serverDb.materials || []);
+            const haRes = mergeStoreItems(haList, serverDb.hotel_advances || []);
+            const flRes = mergeStoreItems(flList, serverDb.food_logs || []);
+            const gstRes = mergeStoreItems(gstList, serverDb.gst_records || []);
+            const payersRes = mergeStoreItems(payersList, serverDb.payers || []);
+            const sdRes = mergeStoreItems(sdList, serverDb.site_diaries || []);
+            const dwRes = mergeStoreItems(dwList, serverDb.delay_weather_logs || []);
+            const expRes = mergeStoreItems(expList, serverDb.daily_expenses || []);
 
-            await putItems('projects', serverDb.projects || []);
-            await putItems('labours', serverDb.labours || []);
-            await putItems('attendance', serverDb.attendance || []);
-            await putItems('advances', serverDb.advances || []);
-            await putItems('payments', serverDb.payments || []);
-            await putItems('materials', serverDb.materials || []);
-            await putItems('hotel_advances', serverDb.hotel_advances || []);
-            await putItems('food_logs', serverDb.food_logs || []);
-            await putItems('gst_records', serverDb.gst_records || []);
-            await putItems('payers', serverDb.payers || []);
-            await putItems('site_diaries', serverDb.site_diaries || []);
-            await putItems('delay_weather_logs', serverDb.delay_weather_logs || []);
-            await putItems('daily_expenses', serverDb.daily_expenses || []);
+            // Clean up any attendance records before worker joined date
+            const labourMap = new Map((lRes.merged as Labour[]).map(l => [l.id, l]));
+            const cleanedAttendance = (attRes.merged as Attendance[]).filter(att => {
+              const l = labourMap.get(att.labourId);
+              if (l && l.joinedDate && att.date < l.joinedDate) {
+                return false;
+              }
+              return true;
+            });
 
-            // Reload local variables
-            pList = serverDb.projects || [];
-            lList = serverDb.labours || [];
-            attList = serverDb.attendance || [];
-            advList = serverDb.advances || [];
-            payList = serverDb.payments || [];
-            matList = serverDb.materials || [];
-            haList = serverDb.hotel_advances || [];
-            flList = serverDb.food_logs || [];
-            gstList = serverDb.gst_records || [];
-            payersList = serverDb.payers || [];
-            sdList = serverDb.site_diaries || [];
-            dwList = serverDb.delay_weather_logs || [];
-            expList = serverDb.daily_expenses || [];
+            pList = pRes.merged;
+            lList = lRes.merged;
+            attList = cleanedAttendance;
+            advList = advRes.merged;
+            payList = payRes.merged;
+            matList = matRes.merged;
+            haList = haRes.merged;
+            flList = flRes.merged;
+            gstList = gstRes.merged;
+            payersList = payersRes.merged;
+            sdList = sdRes.merged;
+            dwList = dwRes.merged;
+            expList = expRes.merged;
+
+            // Persist merged stores into local IndexedDB while preserving timestamps
+            await putItems('projects', pList, true);
+            await putItems('labours', lList, true);
+            await putItems('attendance', attList, true);
+            await putItems('advances', advList, true);
+            await putItems('payments', payList, true);
+            await putItems('materials', matList, true);
+            await putItems('hotel_advances', haList, true);
+            await putItems('food_logs', flList, true);
+            await putItems('gst_records', gstList, true);
+            await putItems('payers', payersList, true);
+            await putItems('site_diaries', sdList, true);
+            await putItems('delay_weather_logs', dwList, true);
+            await putItems('daily_expenses', expList, true);
+
+            const hasLocalNewerData = pRes.hasLocalChanges || lRes.hasLocalChanges || attRes.hasLocalChanges ||
+              advRes.hasLocalChanges || payRes.hasLocalChanges || matRes.hasLocalChanges || haRes.hasLocalChanges ||
+              flRes.hasLocalChanges || gstRes.hasLocalChanges || payersRes.hasLocalChanges || sdRes.hasLocalChanges ||
+              dwRes.hasLocalChanges || expRes.hasLocalChanges;
+
+            if (hasLocalNewerData) {
+              const payload = {
+                projects: pList,
+                labours: lList,
+                attendance: attList,
+                advances: advList,
+                payments: payList,
+                materials: matList,
+                hotel_advances: haList,
+                food_logs: flList,
+                gst_records: gstList,
+                payers: payersList,
+                site_diaries: sdList,
+                delay_weather_logs: dwList,
+                daily_expenses: expList,
+              };
+              await fetch('/api/db/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+            }
           } else if (pList.length > 0) {
             // Server is empty, but local has data, so push local database to server
             const payload = {
@@ -1303,6 +1372,10 @@ export default function App() {
               foodLogs={foodLogs}
               gstRecords={gstRecords}
               dailyExpenses={dailyExpenses}
+              advanceRecords={advanceRecords}
+              paymentRecords={paymentRecords}
+              hotelAdvances={hotelAdvances}
+              payers={payers}
               activeProjectId={activeProjectId}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}
@@ -1312,12 +1385,31 @@ export default function App() {
               onResetDatabase={handleResetDatabase}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}
+              onUpdateDailyExpense={handleUpdateDailyExpense}
+              onDeleteDailyExpense={handleDeleteDailyExpense}
+              onUpdateMaterial={handleUpdateMaterial}
+              onDeleteMaterial={handleDeleteMaterial}
+              onUpdateFoodLog={handleUpdateFoodLog}
+              onDeleteFoodLog={handleDeleteFoodLog}
+              onDeleteAdvance={handleDeleteAdvance}
+              onDeletePayment={handleDeletePayment}
+              onDeleteHotelAdvance={handleDeleteHotelAdvance}
+              onUpdatePayer={handleUpdatePayer}
+              onDeletePayer={handleDeletePayer}
+              onUpdateGstRecord={handleUpdateGstRecord}
+              onDeleteGstRecord={handleDeleteGstRecord}
             />
           )}
 
           {activeTab === 'projects' && (
             <ProjectManager
               projects={projects}
+              labours={labours}
+              attendanceRecords={attendanceRecords}
+              materials={materials}
+              foodLogs={foodLogs}
+              dailyExpenses={dailyExpenses}
+              foodCalculationStartDate={foodCalculationStartDate}
               activeProjectId={activeProjectId}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}

@@ -32,8 +32,6 @@ export default function CostAnalysis({
   foodCalculationStartDate,
   onFoodCalculationStartDateChange
 }: CostAnalysisProps) {
-  const [useAutoFoodCalc, setUseAutoFoodCalc] = React.useState(true);
-
   if (!activeProject) {
     return (
       <div className="text-center py-12 bg-slate-50 rounded-xl border border-slate-200">
@@ -69,33 +67,8 @@ export default function CostAnalysis({
   // Material costs
   const totalMaterialCost = projectMaterials.reduce((sum, m) => sum + m.cost, 0);
 
-  // Food costs (The actual food logs amount vs. Auto ₹100/day Present since joining till today or leftDate)
-  const totalManualFoodCost = projectFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
-  const projectLabourIds = new Set(projectAttendance.map(a => a.labourId));
-  const projectLabours = labours.filter(l => {
-    if (projectLabourIds.has(l.id)) return true;
-    if (l.status === 'active') return true;
-    if (l.status === 'left' && l.joinedDate) {
-      const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
-      if (leftDate >= activeProject.startDate) return true;
-    }
-    return false;
-  });
-  const totalAutoFoodCost = projectLabours.reduce((sum, l) => {
-    const { cost } = getAttendanceFoodDaysAndCost(
-      l,
-      attendanceRecords,
-      activeProject.id,
-      foodCalculationStartDate,
-      activeProject.startDate
-    );
-    return sum + cost;
-  }, 0);
-
-  const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
-  const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
-
-  const totalFoodCost = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
+  // Food costs (Logged Meal entries)
+  const totalFoodCost = projectFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
 
   // Daily Expenses and Misc
   const projectExpenses = (dailyExpenses || []).filter(e => e.projectId === activeProject.id);
@@ -168,9 +141,7 @@ export default function CostAnalysis({
 
   function remainingBalanceForHotel() {
     const totalAdv = projectHotelAdvances.reduce((sum, a) => sum + a.amount, 0);
-    const visitorFoodLogs = projectFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
-    const totalVisitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
-    const totalFood = useAutoFoodCalc ? (totalAutoFoodCost + totalVisitorFoodCost) : totalManualFoodCost;
+    const totalFood = projectFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
     return totalAdv - totalFood;
   }
 
@@ -228,19 +199,10 @@ export default function CostAnalysis({
       if (obj) obj.materials += mat.cost || 0;
     });
 
-    if (useAutoFoodCalc) {
-      projectAttendance.forEach(att => {
-        if (att.status === 'present' || att.status === 'half_day') {
-          const obj = getMonthObj(att.date);
-          if (obj) obj.food += (att.status === 'present' ? 1 : 0.5) * 100;
-        }
-      });
-    } else {
-      projectFoodLogs.forEach(f => {
-        const obj = getMonthObj(f.date);
-        if (obj) obj.food += (f.mealsCount || 1) * (f.cost || 0);
-      });
-    }
+    projectFoodLogs.forEach(f => {
+      const obj = getMonthObj(f.date);
+      if (obj) obj.food += (f.mealsCount || 1) * (f.cost || 0);
+    });
 
     const projectDailyExp = dailyExpenses.filter(e => e.projectId === activeProject.id);
     projectDailyExp.forEach(exp => {
@@ -254,7 +216,7 @@ export default function CostAnalysis({
     });
 
     return list.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  }, [projectAttendance, projectAdvances, projectMaterials, projectFoodLogs, dailyExpenses, useAutoFoodCalc, activeProject.id, labours]);
+  }, [projectAttendance, projectAdvances, projectMaterials, projectFoodLogs, dailyExpenses, activeProject.id, labours]);
 
   return (
     <div className="space-y-6">
@@ -324,35 +286,7 @@ export default function CostAnalysis({
           <div className="flex flex-col gap-2 border-b border-slate-100 pb-2">
             <div className="flex justify-between items-center">
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Cost Category Distribution</h3>
-              <button
-                onClick={() => setUseAutoFoodCalc(!useAutoFoodCalc)}
-                className="text-[10px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 font-bold px-2.5 py-1.5 rounded-lg transition cursor-pointer"
-                title="Toggle between manual food meal logs and auto-accrued ₹100/day calculation"
-              >
-                Mode: {useAutoFoodCalc ? 'Auto ₹100/Day' : 'Manual Logs'}
-              </button>
             </div>
-            {useAutoFoodCalc && (
-              <div className="flex items-center gap-1.5 justify-end">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Food Calculate From:
-                </span>
-                <input
-                  type="date"
-                  value={foodCalculationStartDate}
-                  onChange={(e) => onFoodCalculationStartDateChange(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg text-[10px] px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-slate-600"
-                />
-                {foodCalculationStartDate && (
-                  <button
-                    onClick={() => onFoodCalculationStartDateChange('')}
-                    className="text-[10px] text-rose-600 hover:text-rose-800 font-semibold cursor-pointer"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
           {/* SVG Pie Chart / Visual Segments */}

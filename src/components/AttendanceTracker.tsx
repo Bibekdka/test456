@@ -41,7 +41,7 @@ export default function AttendanceTracker({
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [trackerState, setTrackerState] = useState<Record<string, { status: AttendanceStatus; advance: number; note: string; paidBy: string }>>({});
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'tracker' | 'calendar' | 'standalone' | 'payers'>('tracker');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'tracker' | 'standalone' | 'payers'>('calendar');
 
   // Dialog and feedback states
   const [showSavedDialog, setShowSavedDialog] = useState(false);
@@ -92,10 +92,12 @@ export default function AttendanceTracker({
   useEffect(() => {
     if (!activeProject) return;
 
+    const sameContext = prevSelectedDateRef.current === selectedDate && prevProjectIdRef.current === activeProject.id;
+
     prevSelectedDateRef.current = selectedDate;
     prevProjectIdRef.current = activeProject.id;
 
-    setTrackerState(() => {
+    setTrackerState((prev) => {
       const updatedTracker: Record<string, { status: AttendanceStatus; advance: number; note: string; paidBy: string }> = {};
 
       const allLaboursToTrack = [...activeLabours, ...leftLabours];
@@ -111,11 +113,13 @@ export default function AttendanceTracker({
           a => a.labourId === l.id && a.projectId === activeProject.id && a.date === selectedDate
         );
 
+        const prevItem = sameContext ? prev[l.id] : undefined;
+
         updatedTracker[l.id] = {
-          status: existingAtt ? existingAtt.status : 'pending', // Default to pending so untracked days are not counted as present
-          advance: existingAdv ? existingAdv.amount : 0,
-          note: existingAdv ? existingAdv.description || '' : '',
-          paidBy: existingAdv ? existingAdv.paidBy || '' : '',
+          status: existingAtt ? existingAtt.status : (prevItem?.status || 'pending'),
+          advance: prevItem?.advance !== undefined ? prevItem.advance : (existingAdv ? existingAdv.amount : 0),
+          note: prevItem?.note !== undefined ? prevItem.note : (existingAdv ? existingAdv.description || '' : ''),
+          paidBy: prevItem?.paidBy !== undefined ? prevItem.paidBy : (existingAdv ? existingAdv.paidBy || '' : ''),
         };
       });
 
@@ -145,11 +149,55 @@ export default function AttendanceTracker({
     }
   };
 
-  const handleStatusChange = (labourId: string, status: AttendanceStatus) => {
+  const handleStatusChange = async (labourId: string, status: AttendanceStatus) => {
     setTrackerState(prev => ({
       ...prev,
       [labourId]: { ...prev[labourId], status }
     }));
+
+    if (activeProject) {
+      const existingAtt = attendanceRecords.find(
+        r => r.labourId === labourId && r.projectId === activeProject.id && r.date === selectedDate
+      );
+      const recordToSave: Attendance = {
+        id: existingAtt ? existingAtt.id : 'att_' + labourId + '_' + activeProject.id + '_' + selectedDate,
+        labourId,
+        projectId: activeProject.id,
+        date: selectedDate,
+        status,
+      };
+      await onSaveAttendance([recordToSave]);
+    }
+  };
+
+  const handleBatchFillStatus = async (status: AttendanceStatus) => {
+    const updated = { ...trackerState };
+    const recordsToSave: Attendance[] = [];
+
+    activeLabours.forEach(l => {
+      updated[l.id] = {
+        ...(updated[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' }),
+        status
+      };
+
+      if (activeProject) {
+        const existingAtt = attendanceRecords.find(
+          r => r.labourId === l.id && r.projectId === activeProject.id && r.date === selectedDate
+        );
+        recordsToSave.push({
+          id: existingAtt ? existingAtt.id : 'att_' + l.id + '_' + activeProject.id + '_' + selectedDate,
+          labourId: l.id,
+          projectId: activeProject.id,
+          date: selectedDate,
+          status,
+        });
+      }
+    });
+
+    setTrackerState(updated);
+    if (recordsToSave.length > 0) {
+      await onSaveAttendance(recordsToSave);
+    }
   };
 
   const handleAdvanceChange = (labourId: string, value: string) => {
@@ -405,17 +453,6 @@ export default function AttendanceTracker({
       {/* Sub Tabs Navigation */}
       <div className="flex border border-slate-100 bg-slate-50/50 p-1.5 rounded-xl max-w-2xl shadow-sm flex-wrap gap-1">
         <button
-          onClick={() => setActiveSubTab('tracker')}
-          className={`flex-1 min-w-[130px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            activeSubTab === 'tracker'
-              ? 'bg-slate-900 text-white shadow'
-              : 'text-slate-500 hover:bg-white hover:text-slate-800'
-          }`}
-        >
-          <Calendar className="w-3.5 h-3.5" />
-          Daily Register
-        </button>
-        <button
           onClick={() => setActiveSubTab('calendar')}
           className={`flex-1 min-w-[140px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
             activeSubTab === 'calendar'
@@ -425,6 +462,17 @@ export default function AttendanceTracker({
         >
           <CalendarDays className="w-3.5 h-3.5 text-emerald-400" />
           Attendance Calendar
+        </button>
+        <button
+          onClick={() => setActiveSubTab('tracker')}
+          className={`flex-1 min-w-[130px] py-2 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            activeSubTab === 'tracker'
+              ? 'bg-slate-900 text-white shadow'
+              : 'text-slate-500 hover:bg-white hover:text-slate-800'
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5" />
+          Daily Register
         </button>
         <button
           onClick={() => setActiveSubTab('standalone')}
@@ -675,16 +723,7 @@ export default function AttendanceTracker({
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'present', advance: 0, note: '', paidBy: '' }),
-                            status: 'present'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('present')}
                       className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <CheckCircle className="w-3.5 h-3.5" />
@@ -692,16 +731,7 @@ export default function AttendanceTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'absent', advance: 0, note: '', paidBy: '' }),
-                            status: 'absent'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('absent')}
                       className="inline-flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <XCircle className="w-3.5 h-3.5" />
@@ -709,16 +739,7 @@ export default function AttendanceTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'half_day', advance: 0, note: '', paidBy: '' }),
-                            status: 'half_day'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('half_day')}
                       className="inline-flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <HelpCircle className="w-3.5 h-3.5" />
@@ -726,16 +747,7 @@ export default function AttendanceTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'rest', advance: 0, note: '', paidBy: '' }),
-                            status: 'rest'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('rest')}
                       className="inline-flex items-center justify-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <Coffee className="w-3.5 h-3.5" />
@@ -743,16 +755,7 @@ export default function AttendanceTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'home', advance: 0, note: '', paidBy: '' }),
-                            status: 'home'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('home')}
                       className="inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -760,16 +763,7 @@ export default function AttendanceTracker({
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const updated = { ...trackerState };
-                        activeLabours.forEach(l => {
-                          updated[l.id] = {
-                            ...(updated[l.id] || { status: 'pending', advance: 0, note: '', paidBy: '' }),
-                            status: 'pending'
-                          };
-                        });
-                        setTrackerState(updated);
-                      }}
+                      onClick={() => handleBatchFillStatus('pending')}
                       className="inline-flex items-center justify-center gap-1.5 bg-slate-500 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-sm"
                     >
                       <HelpCircle className="w-3.5 h-3.5" />

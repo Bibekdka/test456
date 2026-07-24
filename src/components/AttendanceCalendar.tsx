@@ -129,6 +129,10 @@ export default function AttendanceCalendar({
 
   // Get attendance record for person and date
   const getAttendanceRecord = (labourId: string, dateStr: string): Attendance | undefined => {
+    const person = labours.find(l => l.id === labourId);
+    if (person && person.joinedDate && dateStr < person.joinedDate) {
+      return undefined;
+    }
     return attendanceRecords.find(
       r => r.labourId === labourId && r.projectId === activeProject.id && r.date === dateStr
     );
@@ -144,6 +148,12 @@ export default function AttendanceCalendar({
   // Quick 1-Click Toggle for a Day:
   // Unmarked (Grey) ➔ Present (Green) ➔ Half Day (Yellow) ➔ Absent (Red) ➔ Unmarked (Grey)
   const handleQuickToggleDay = (labourId: string, dateStr: string) => {
+    const person = labours.find(l => l.id === labourId);
+    if (person && person.joinedDate && dateStr < person.joinedDate) {
+      alert(`Cannot mark attendance for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
+      return;
+    }
+
     if (onSelectDate) {
       onSelectDate(dateStr);
     }
@@ -191,6 +201,12 @@ export default function AttendanceCalendar({
 
   // Set specific status
   const handleSetStatus = (labourId: string, dateStr: string, status: AttendanceStatus | 'unmarked') => {
+    const person = labours.find(l => l.id === labourId);
+    if (person && person.joinedDate && dateStr < person.joinedDate) {
+      alert(`Cannot set status for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
+      return;
+    }
+
     if (onSelectDate) {
       onSelectDate(dateStr);
     }
@@ -229,9 +245,15 @@ export default function AttendanceCalendar({
     let halfDays = 0;
     let absentDays = 0;
     let restDays = 0;
+    let validDaysInMonth = 0;
+
+    const joinDate = selectedLabour.joinedDate || activeProject.startDate || '1970-01-01';
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateStr(day);
+      if (dateStr < joinDate) continue; // Ignore days before worker joined
+
+      validDaysInMonth++;
       const rec = getAttendanceRecord(selectedLabour.id, dateStr);
       const st = getAttendanceStatus(rec);
 
@@ -241,12 +263,12 @@ export default function AttendanceCalendar({
       else if (st === 'rest' || st === 'home') restDays++;
     }
 
-    const unmarkedDays = daysInMonth - (presentDays + halfDays + absentDays + restDays);
+    const unmarkedDays = Math.max(0, validDaysInMonth - (presentDays + halfDays + absentDays + restDays));
     const totalDaysWorked = presentDays + (halfDays * 0.5);
     const estWages = totalDaysWorked * (selectedLabour.perDayWage || 0);
 
     return { presentDays, halfDays, absentDays, restDays, unmarkedDays, totalDaysWorked, estWages };
-  }, [selectedLabour, currentYear, currentMonth, daysInMonth, attendanceRecords]);
+  }, [selectedLabour, currentYear, currentMonth, daysInMonth, attendanceRecords, activeProject]);
 
   if (labours.length === 0) {
     return (
@@ -794,6 +816,7 @@ export default function AttendanceCalendar({
 
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dStr = formatDateStr(d);
+                    if (dStr < joinDate) continue; // Skip pre-join days from monthly stats
                     const rec = getAttendanceRecord(person.id, dStr);
                     const st = getAttendanceStatus(rec);
                     if (st === 'present') monthDaysWorked += 1;
@@ -824,6 +847,7 @@ export default function AttendanceCalendar({
                       {Array.from({ length: daysInMonth }).map((_, idx) => {
                         const dayNum = idx + 1;
                         const dateStr = formatDateStr(dayNum);
+                        const isBeforeJoined = dateStr < joinDate;
                         const rec = getAttendanceRecord(person.id, dateStr);
                         const status = getAttendanceStatus(rec);
 
@@ -831,9 +855,17 @@ export default function AttendanceCalendar({
                           <td key={dayNum} className="p-0.5 text-center">
                             <button
                               type="button"
-                              onClick={() => handleQuickToggleDay(person.id, dateStr)}
+                              onClick={() => {
+                                if (isBeforeJoined) {
+                                  alert(`Cannot mark attendance for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
+                                  return;
+                                }
+                                handleQuickToggleDay(person.id, dateStr);
+                              }}
                               className={`w-6 h-7 rounded border font-mono text-[10px] font-bold flex items-center justify-center transition cursor-pointer ${
-                                status === 'present'
+                                isBeforeJoined
+                                  ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed opacity-60'
+                                  : status === 'present'
                                   ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
                                   : status === 'half_day'
                                   ? 'bg-amber-400 text-slate-900 border-amber-500 hover:bg-amber-500'
@@ -843,14 +875,18 @@ export default function AttendanceCalendar({
                                   ? 'bg-blue-500 text-white border-blue-600'
                                   : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
                               }`}
-                              title={`${person.name} - ${dateStr}: ${
-                                status === 'present' ? 'Full Day (1.0)' :
-                                status === 'half_day' ? 'Half Day (0.5)' :
-                                status === 'absent' ? 'Absent (0.0)' :
-                                'Unmarked'
-                              }`}
+                              title={
+                                isBeforeJoined
+                                  ? `${person.name} - Pre-join date (Joined: ${joinDate})`
+                                  : `${person.name} - ${dateStr}: ${
+                                      status === 'present' ? 'Full Day (1.0)' :
+                                      status === 'half_day' ? 'Half Day (0.5)' :
+                                      status === 'absent' ? 'Absent (0.0)' :
+                                      'Unmarked'
+                                    }`
+                              }
                             >
-                              {status === 'present' ? 'P' : status === 'half_day' ? 'H' : status === 'absent' ? 'A' : dayNum}
+                              {isBeforeJoined ? '-' : status === 'present' ? 'P' : status === 'half_day' ? 'H' : status === 'absent' ? 'A' : dayNum}
                             </button>
                           </td>
                         );

@@ -4,13 +4,23 @@
  */
 
 import React, { useState } from 'react';
-import { Project } from '../types';
+import { Project, Labour, Attendance, Material, FoodLog, DailyExpense, getAttendanceFoodDaysAndCost } from '../types';
 import { generateId } from '../utils/id';
-import { Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, CheckCircle2, AlertTriangle, PlayCircle, ToggleLeft, MapPin } from 'lucide-react';
+import { 
+  Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
+  CheckCircle2, AlertTriangle, PlayCircle, ToggleLeft, MapPin, 
+  TrendingUp, Receipt, PieChart, AlertCircle
+} from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface ProjectManagerProps {
   projects: Project[];
+  labours?: Labour[];
+  attendanceRecords?: Attendance[];
+  materials?: Material[];
+  foodLogs?: FoodLog[];
+  dailyExpenses?: DailyExpense[];
+  foodCalculationStartDate?: string;
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
   onAddProject: (project: Project) => void;
@@ -20,6 +30,12 @@ interface ProjectManagerProps {
 
 export default function ProjectManager({
   projects,
+  labours = [],
+  attendanceRecords = [],
+  materials = [],
+  foodLogs = [],
+  dailyExpenses = [],
+  foodCalculationStartDate = '',
   activeProjectId,
   onSelectProject,
   onAddProject,
@@ -38,6 +54,63 @@ export default function ProjectManager({
   const [targetDate, setTargetDate] = useState('');
   const [budget, setBudget] = useState('');
   const [status, setStatus] = useState<'active' | 'completed' | 'on_hold'>('active');
+
+  // Helper function to calculate total amount spent for a project
+  const getProjectSpent = (project: Project): number => {
+    const pId = project.id;
+    const pAttendance = attendanceRecords.filter(a => a.projectId === pId);
+    const pMaterials = materials.filter(m => m.projectId === pId);
+    const pFoodLogs = foodLogs.filter(f => f.projectId === pId);
+    const pExpenses = dailyExpenses.filter(e => e.projectId === pId);
+
+    // Labour wages from attendance
+    let labourWages = 0;
+    pAttendance.forEach((att) => {
+      const labour = labours.find(l => l.id === att.labourId);
+      if (labour) {
+        if (att.status === 'present') {
+          labourWages += labour.perDayWage;
+        } else if (att.status === 'half_day') {
+          labourWages += labour.perDayWage / 2;
+        }
+      }
+    });
+
+    // Material cost
+    const materialCost = pMaterials.reduce((sum, m) => sum + m.cost, 0);
+
+    // Food cost (Auto ₹100/day for present labour or manual logs)
+    const pLabourIds = new Set(pAttendance.map(a => a.labourId));
+    const projectLabours = labours.filter(l => {
+      if (pLabourIds.has(l.id)) return true;
+      if (l.status === 'active') return true;
+      if (l.status === 'left' && l.joinedDate) {
+        const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
+        if (leftDate >= project.startDate) return true;
+      }
+      return false;
+    });
+
+    const autoFoodCost = projectLabours.reduce((sum, l) => {
+      const { cost } = getAttendanceFoodDaysAndCost(
+        l,
+        attendanceRecords,
+        project.id,
+        foodCalculationStartDate,
+        project.startDate
+      );
+      return sum + cost;
+    }, 0);
+
+    const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
+    const visitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+    const foodCost = autoFoodCost + visitorFoodCost;
+
+    // Daily Expenses & Misc
+    const dailyExpensesCost = pExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+    return labourWages + materialCost + foodCost + dailyExpensesCost;
+  };
 
   const openAddForm = () => {
     setName('');
@@ -111,12 +184,16 @@ export default function ProjectManager({
     }
   };
 
+  // Calculate total budget & total spent across all sites
+  const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0);
+  const totalSpentAll = projects.reduce((sum, p) => sum + getProjectSpent(p), 0);
+
   return (
     <div id="project-manager-section" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-800">Projects & Work Sites</h2>
-          <p className="text-slate-500 text-sm">Select and manage your active construction sites and track completion timelines.</p>
+          <p className="text-slate-500 text-sm">Select and manage your active construction sites, track expenditure, and monitor timelines.</p>
         </div>
         <button
           id="btn-add-project"
@@ -127,6 +204,48 @@ export default function ProjectManager({
           Add New Site
         </button>
       </div>
+
+      {/* Top Summary Bar */}
+      {projects.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
+            <div className="p-2.5 bg-slate-100 text-slate-700 rounded-lg shrink-0">
+              <Briefcase className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Total Work Sites</p>
+              <p className="text-lg font-bold text-slate-800">{projects.length} {projects.length === 1 ? 'Site' : 'Sites'}</p>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
+            <div className="p-2.5 bg-slate-100 text-slate-700 rounded-lg shrink-0">
+              <IndianRupee className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Total Combined Budget</p>
+              <p className="text-lg font-bold text-slate-800 font-mono truncate">₹{totalBudget.toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-xl p-3.5 flex items-center gap-3">
+            <div className={`p-2.5 rounded-lg shrink-0 ${totalSpentAll > totalBudget && totalBudget > 0 ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'}`}>
+              <TrendingUp className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">Total Amount Spent</p>
+              <p className="text-lg font-bold text-slate-800 font-mono truncate">
+                ₹{totalSpentAll.toLocaleString()}
+                {totalBudget > 0 && (
+                  <span className={`text-xs font-normal ml-1.5 ${totalSpentAll > totalBudget ? 'text-rose-600 font-bold' : 'text-slate-500'}`}>
+                    ({Math.round((totalSpentAll / totalBudget) * 100)}%)
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAddForm && (
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -310,23 +429,89 @@ export default function ProjectManager({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <div className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex items-center gap-2">
-                      <IndianRupee className="w-4 h-4 text-slate-500" />
-                      <div>
+                  {/* Financial & Timeline Metrics Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
+                    {/* 1. Budget */}
+                    <div className="bg-slate-50 border border-slate-200/80 rounded-lg p-2.5 flex items-center gap-2.5">
+                      <div className="p-1.5 bg-slate-200/70 text-slate-700 rounded-md shrink-0">
+                        <IndianRupee className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
                         <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Budget</p>
-                        <p className="font-mono text-sm font-semibold text-slate-700">₹{p.budget.toLocaleString()}</p>
+                        <p className="font-mono text-sm font-bold text-slate-800 truncate">₹{p.budget.toLocaleString()}</p>
                       </div>
                     </div>
 
-                    <div className={`border rounded-lg p-2 flex items-center gap-2 ${timeline.color}`}>
-                      <Clock className="w-4 h-4" />
-                      <div>
+                    {/* 2. Amount Spent */}
+                    {(() => {
+                      const spent = getProjectSpent(p);
+                      const isOver = p.budget > 0 && spent > p.budget;
+                      const percent = p.budget > 0 ? Math.round((spent / p.budget) * 100) : 0;
+                      return (
+                        <div className={`border rounded-lg p-2.5 flex items-center gap-2.5 ${
+                          isOver
+                            ? 'bg-rose-50/80 border-rose-200 text-rose-900'
+                            : 'bg-indigo-50/50 border-indigo-100 text-slate-800'
+                        }`}>
+                          <div className={`p-1.5 rounded-md shrink-0 ${
+                            isOver ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
+                          }`}>
+                            <TrendingUp className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70 truncate">Amount Spent</p>
+                              {p.budget > 0 && (
+                                <span className={`text-[10px] font-mono font-bold shrink-0 ${
+                                  isOver ? 'text-rose-600' : 'text-indigo-600'
+                                }`}>
+                                  {percent}%
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-mono text-sm font-bold truncate">₹{spent.toLocaleString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* 3. Timeline */}
+                    <div className={`border rounded-lg p-2.5 flex items-center gap-2.5 ${timeline.color}`}>
+                      <div className="p-1.5 rounded-md shrink-0 bg-white/60">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
                         <p className="text-[10px] uppercase tracking-wider font-semibold opacity-70">Timeline</p>
-                        <p className="text-sm font-semibold truncate">{timeline.text}</p>
+                        <p className="text-sm font-bold truncate">{timeline.text}</p>
                       </div>
                     </div>
                   </div>
+
+                  {/* Budget Spent Progress Bar */}
+                  {(() => {
+                    const spent = getProjectSpent(p);
+                    if (p.budget <= 0) return null;
+                    const percent = Math.min(100, Math.max(0, (spent / p.budget) * 100));
+                    const isOver = spent > p.budget;
+                    return (
+                      <div className="pt-1.5 space-y-1">
+                        <div className="flex justify-between items-center text-[10px] font-mono">
+                          <span className="text-slate-500">Spent: ₹{spent.toLocaleString()} / ₹{p.budget.toLocaleString()}</span>
+                          <span className={isOver ? 'text-rose-600 font-bold' : 'text-slate-600 font-medium'}>
+                            {isOver ? `Over budget by ₹${(spent - p.budget).toLocaleString()}` : `Remaining: ₹${(p.budget - spent).toLocaleString()}`}
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              isOver ? 'bg-rose-500' : percent > 85 ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
