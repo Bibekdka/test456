@@ -1766,7 +1766,7 @@ export default function Dashboard({
 
               <div className="space-y-3">
                 {projects.map((p) => {
-                  const pSpent = (projectSpendMap.get(p.id) || 0);
+                  const pSpent = getProjectMetrics(p).totalSpent;
                   const pRem = p.budget - pSpent;
                   const pct = p.budget > 0 ? Math.min(100, Math.round((pSpent / p.budget) * 100)) : 0;
 
@@ -1778,11 +1778,6 @@ export default function Dashboard({
                       <div className="space-y-1.5 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h5 className="font-bold text-slate-900 text-sm">{p.name}</h5>
-                          {p.code && (
-                            <span className="bg-slate-100 text-slate-700 font-mono text-[10px] px-2 py-0.5 rounded font-bold">
-                              #{p.code}
-                            </span>
-                          )}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                             p.status === 'active' ? 'bg-emerald-100 text-emerald-800' :
                             p.status === 'completed' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
@@ -2017,7 +2012,7 @@ export default function Dashboard({
                       category: e.category,
                       projectName: pr?.name || 'Unknown Site',
                       projectId: e.projectId,
-                      paidBy: e.paidBy,
+                      paidBy: e.payerId || undefined,
                       amount: e.amount,
                       originalObj: e
                     });
@@ -2030,12 +2025,12 @@ export default function Dashboard({
                     items.push({
                       id: m.id,
                       type: 'material',
-                      date: m.date,
+                      date: m.dateBought,
                       title: `${m.name} (${m.quantityBought} ${m.unit}) - Supplier: ${m.supplier || 'N/A'}`,
-                      category: m.category,
+                      category: 'Material Delivery',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: m.projectId,
-                      paidBy: m.paidBy,
+                      paidBy: undefined,
                       amount: m.cost,
                       originalObj: m
                     });
@@ -2050,7 +2045,7 @@ export default function Dashboard({
                       id: f.id,
                       type: 'food',
                       date: f.date,
-                      title: `Meal Deduction: ${f.mealsCount} meals x ₹${f.cost} (${lab?.name || f.labourId}) ${f.note ? `- ${f.note}` : ''}`,
+                      title: `Meal Deduction: ${f.mealsCount} meals x ₹${f.cost} (${lab?.name || f.labourId}) ${f.notes ? `- ${f.notes}` : ''}`,
                       category: 'Food',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: f.projectId,
@@ -2069,7 +2064,7 @@ export default function Dashboard({
                       id: a.id,
                       type: 'advance',
                       date: a.date,
-                      title: `Worker Advance to ${lab?.name || 'Worker'} (${a.reason || 'Advance'})`,
+                      title: `Worker Advance to ${lab?.name || 'Worker'} (${a.description || 'Advance'})`,
                       category: 'Labour Advance',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: a.projectId,
@@ -2087,11 +2082,11 @@ export default function Dashboard({
                       id: h.id,
                       type: 'hotel',
                       date: h.date,
-                      title: `Hotel Food Advance (${h.notes || 'Hotel Fund'})`,
+                      title: `Hotel Food Advance - ${h.hotelName} (${h.notes || 'Hotel Fund'})`,
                       category: 'Hotel Advance',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: h.projectId,
-                      paidBy: h.paidBy,
+                      paidBy: h.hotelName,
                       amount: h.amount,
                       originalObj: h
                     });
@@ -2260,7 +2255,7 @@ export default function Dashboard({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {projects.map(p => {
-                  const pSpent = (projectSpendMap.get(p.id) || 0);
+                  const pSpent = getProjectMetrics(p).totalSpent;
                   const pRem = p.budget - pSpent;
                   const isOver = pRem < 0;
 
