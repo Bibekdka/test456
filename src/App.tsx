@@ -1233,13 +1233,17 @@ export default function App() {
                     id="active-project-selector"
                     value={activeProjectId || ''}
                     onChange={(e) => setActiveProjectId(e.target.value)}
-                    className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-w-[220px] truncate"
                   >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
+                    {projects.map((p) => {
+                      const isSub = Boolean(p.parentProjectId);
+                      const parent = isSub ? projects.find(pr => pr.id === p.parentProjectId) : null;
+                      return (
+                        <option key={p.id} value={p.id}>
+                          {isSub ? `↳ ${p.name} (Site under ${parent?.name || 'Main'})` : `${p.name} (Main Site)`}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}

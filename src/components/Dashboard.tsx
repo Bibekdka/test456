@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, 
   Advance, Payment, HotelAdvance, Payer,
-  getAttendanceFoodDaysAndCost 
+  getAttendanceFoodDaysAndCost, getProjectScopeIds
 } from '../types';
 import { generateId } from '../utils/id';
 import { 
@@ -237,13 +237,14 @@ export default function Dashboard({
     setEditingProject(null);
   };
 
-  // Helper to calculate pre-computed metrics for any project
+  // Helper to calculate pre-computed metrics for any project (including sub-sites rollup)
   const getProjectMetrics = (project: Project) => {
-    const pId = project.id;
-    const pAttendance = attendanceRecords.filter(a => a.projectId === pId);
-    const pMaterials = materials.filter(m => m.projectId === pId);
-    const pFoodLogs = foodLogs.filter(f => f.projectId === pId);
-    const pGst = gstRecords.filter(g => g.projectId === pId);
+    const scopeIds = new Set(getProjectScopeIds(project.id, projects));
+    
+    const pAttendance = attendanceRecords.filter(a => scopeIds.has(a.projectId));
+    const pMaterials = materials.filter(m => scopeIds.has(m.projectId));
+    const pFoodLogs = foodLogs.filter(f => scopeIds.has(f.projectId));
+    const pGst = gstRecords.filter(g => scopeIds.has(g.projectId));
 
     // Labour wages
     let labourWages = 0;
@@ -271,13 +272,13 @@ export default function Dashboard({
 
     // Daily Expenses and Misc
     const dailyExpensesCost = (dailyExpenses || [])
-      .filter(e => e.projectId === pId)
+      .filter(e => scopeIds.has(e.projectId))
       .reduce((sum, e) => sum + e.amount, 0);
 
     const totalSpent = labourWages + materialCost + foodCost + dailyExpensesCost;
     const remainingBudget = project.budget - totalSpent;
 
-    // Workers count for this project
+    // Workers count for this project scope
     const activeWorkersCount = pLabourIds.size;
 
     return {
@@ -293,7 +294,7 @@ export default function Dashboard({
     };
   };
 
-  // Overall metrics across all projects
+  // Overall metrics across all top-level projects (sub-sites rollup included in top-level parents)
   let overallBudget = 0;
   let overallLabourWages = 0;
   let overallMaterialCost = 0;
@@ -303,7 +304,9 @@ export default function Dashboard({
   let overallDailyExpenses = 0;
   let overallSpent = 0;
 
-  projects.forEach(p => {
+  const topLevelProjects = projects.filter(p => !p.parentProjectId);
+
+  topLevelProjects.forEach(p => {
     const metrics = getProjectMetrics(p);
     overallBudget += p.budget;
     overallLabourWages += metrics.labourWages;

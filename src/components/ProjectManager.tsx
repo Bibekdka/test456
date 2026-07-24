@@ -4,12 +4,12 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Labour, Attendance, Material, FoodLog, DailyExpense, getAttendanceFoodDaysAndCost } from '../types';
+import { Project, Labour, Attendance, Material, FoodLog, DailyExpense, getAttendanceFoodDaysAndCost, getProjectScopeIds } from '../types';
 import { generateId } from '../utils/id';
 import { 
   Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
   CheckCircle2, AlertTriangle, PlayCircle, ToggleLeft, MapPin, 
-  TrendingUp, Receipt, PieChart, AlertCircle
+  TrendingUp, Receipt, PieChart, AlertCircle, Layers, GitFork
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -54,14 +54,16 @@ export default function ProjectManager({
   const [targetDate, setTargetDate] = useState('');
   const [budget, setBudget] = useState('');
   const [status, setStatus] = useState<'active' | 'completed' | 'on_hold'>('active');
+  const [parentProjectId, setParentProjectId] = useState<string>('');
 
-  // Helper function to calculate total amount spent for a project
+  // Helper function to calculate total amount spent for a project (including sub-sites rollup)
   const getProjectSpent = (project: Project): number => {
-    const pId = project.id;
-    const pAttendance = attendanceRecords.filter(a => a.projectId === pId);
-    const pMaterials = materials.filter(m => m.projectId === pId);
-    const pFoodLogs = foodLogs.filter(f => f.projectId === pId);
-    const pExpenses = dailyExpenses.filter(e => e.projectId === pId);
+    const scopeIds = new Set(getProjectScopeIds(project.id, projects));
+    
+    const pAttendance = attendanceRecords.filter(a => scopeIds.has(a.projectId));
+    const pMaterials = materials.filter(m => scopeIds.has(m.projectId));
+    const pFoodLogs = foodLogs.filter(f => scopeIds.has(f.projectId));
+    const pExpenses = dailyExpenses.filter(e => scopeIds.has(e.projectId));
 
     // Labour wages from attendance
     let labourWages = 0;
@@ -79,31 +81,29 @@ export default function ProjectManager({
     // Material cost
     const materialCost = pMaterials.reduce((sum, m) => sum + m.cost, 0);
 
-    // Food cost (Auto ₹100/day for present labour or manual logs)
-    const pLabourIds = new Set(pAttendance.map(a => a.labourId));
-    const projectLabours = labours.filter(l => {
-      if (pLabourIds.has(l.id)) return true;
-      if (l.status === 'active') return true;
-      if (l.status === 'left' && l.joinedDate) {
-        const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
-        if (leftDate >= project.startDate) return true;
-      }
-      return false;
-    });
-
-    const autoFoodCost = projectLabours.reduce((sum, l) => {
-      const { cost } = getAttendanceFoodDaysAndCost(
-        l,
-        attendanceRecords,
-        project.id,
-        foodCalculationStartDate,
-        project.startDate
-      );
-      return sum + cost;
-    }, 0);
-
+    // Food cost
     const visitorFoodLogs = pFoodLogs.filter(f => f.labourId === 'visitor' || f.labourId.startsWith('visitor'));
     const visitorFoodCost = visitorFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+
+    // Auto food cost for present labours
+    const pLabourIds = new Set(pAttendance.map(a => a.labourId));
+    const projectLabours = labours.filter(l => pLabourIds.has(l.id) || l.status === 'active');
+
+    let autoFoodCost = 0;
+    Array.from(scopeIds).forEach(scId => {
+      const scProj = projects.find(p => p.id === scId) || project;
+      autoFoodCost += projectLabours.reduce((sum, l) => {
+        const { cost } = getAttendanceFoodDaysAndCost(
+          l,
+          attendanceRecords,
+          scId,
+          foodCalculationStartDate,
+          scProj.startDate
+        );
+        return sum + cost;
+      }, 0);
+    });
+
     const foodCost = autoFoodCost + visitorFoodCost;
 
     // Daily Expenses & Misc
@@ -120,6 +120,7 @@ export default function ProjectManager({
     setTargetDate(new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]); // Default 90 days
     setBudget('');
     setStatus('active');
+    setParentProjectId('');
     setEditingProject(null);
     setShowAddForm(true);
   };
@@ -134,6 +135,7 @@ export default function ProjectManager({
     setTargetDate(p.targetDate);
     setBudget(p.budget.toString());
     setStatus(p.status);
+    setParentProjectId(p.parentProjectId || '');
     setShowAddForm(true);
   };
 
@@ -150,6 +152,7 @@ export default function ProjectManager({
       targetDate,
       budget: Number(budget) || 0,
       status,
+      parentProjectId: parentProjectId || undefined,
     };
 
     if (editingProject) {
@@ -184,9 +187,10 @@ export default function ProjectManager({
     }
   };
 
-  // Calculate total budget & total spent across all sites
-  const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0);
-  const totalSpentAll = projects.reduce((sum, p) => sum + getProjectSpent(p), 0);
+  // Calculate total budget & total spent across top-level sites (to prevent double counting sub-sites)
+  const topLevelProjects = projects.filter(p => !p.parentProjectId);
+  const totalBudget = topLevelProjects.reduce((sum, p) => sum + p.budget, 0);
+  const totalSpentAll = topLevelProjects.reduce((sum, p) => sum + getProjectSpent(p), 0);
 
   return (
     <div id="project-manager-section" className="space-y-6">
@@ -289,6 +293,29 @@ export default function ProjectManager({
             </div>
 
             <div className="space-y-1.5 md:col-span-2">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                Parent Main Project (Optional Multi-Site Hierarchy)
+              </label>
+              <select
+                value={parentProjectId}
+                onChange={(e) => setParentProjectId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+              >
+                <option value="">None (Top-Level Main Site e.g. TES 1, BGD 2nd)</option>
+                {projects
+                  .filter(p => !editingProject || p.id !== editingProject.id)
+                  .map(p => (
+                    <option key={p.id} value={p.id}>
+                      Sub-site under: {p.name} {p.parentProjectId ? '(Nested Sub-site)' : '(Main Project)'}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                If selected, all expenses, wages, and materials logged in this new site will automatically aggregate into the main parent project!
+              </p>
+            </div>
+
+            <div className="space-y-1.5 md:col-span-2">
               <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Description</label>
               <textarea
                 value={description}
@@ -375,9 +402,11 @@ export default function ProjectManager({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {projects.map((p) => {
+            {projects.map((p) => {
             const isActive = p.id === activeProjectId;
             const timeline = getDaysLeft(p.targetDate, p.startDate, p.status);
+            const parentProj = p.parentProjectId ? projects.find(pr => pr.id === p.parentProjectId) : null;
+            const childSubSites = projects.filter(pr => pr.parentProjectId === p.id);
 
             return (
               <div
@@ -388,17 +417,38 @@ export default function ProjectManager({
                   isActive
                     ? 'border-slate-900 ring-2 ring-slate-900/5'
                     : 'border-slate-200'
-                }`}
+                } ${p.parentProjectId ? 'ml-0 md:ml-2 border-l-4 border-l-amber-500' : ''}`}
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className={`w-2 h-2 rounded-full ${
                           p.status === 'active' ? 'bg-emerald-500' : p.status === 'completed' ? 'bg-blue-500' : 'bg-amber-500'
                         }`} />
                         <h3 className="font-semibold text-slate-800 text-base group-hover:text-slate-900">{p.name}</h3>
+                        
+                        {parentProj && (
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 border border-amber-200/80 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            <GitFork className="w-3 h-3 text-amber-600 shrink-0" />
+                            Sub-Site of {parentProj.name}
+                          </span>
+                        )}
+
+                        {childSubSites.length > 0 && (
+                          <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-800 border border-indigo-200/80 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            <Layers className="w-3 h-3 text-indigo-600 shrink-0" />
+                            Main Site ({childSubSites.length} Sub-{childSubSites.length === 1 ? 'Site' : 'Sites'})
+                          </span>
+                        )}
                       </div>
+                      
+                      {childSubSites.length > 0 && (
+                        <p className="text-[11px] text-indigo-600 font-medium mt-1">
+                          Includes rolled-up metrics for: {childSubSites.map(s => s.name).join(', ')}
+                        </p>
+                      )}
+
                       <p className="text-slate-500 text-xs mt-1 line-clamp-2 leading-relaxed">{p.description || 'No description provided.'}</p>
                       {p.location && (
                         <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium mt-1.5">

@@ -111,15 +111,31 @@ export default function FoodTracker({
       .filter(a => a.projectId === activeProject.id)
       .map(a => a.labourId)
   );
-  const projectLabours = labours.filter(l => {
-    if (projectLabourIds.has(l.id)) return true;
-    if (l.status === 'active') return true;
-    if (l.status === 'left' && l.joinedDate) {
-      const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
-      if (leftDate >= activeProject.startDate) return true;
-    }
-    return false;
-  });
+  const projectLabours = labours
+    .filter(l => {
+      if (projectLabourIds.has(l.id)) return true;
+      if (l.status === 'active') return true;
+      if (l.status === 'left' && l.joinedDate) {
+        const leftDate = l.leftDate || new Date().toISOString().split('T')[0];
+        if (leftDate >= activeProject.startDate) return true;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      const aActive = a.status === 'active';
+      const bActive = b.status === 'active';
+      // Active / new members at top, Left members at bottom
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+
+      // Newest joined first for active/new members
+      const aJoined = a.joinedDate || '';
+      const bJoined = b.joinedDate || '';
+      if (aJoined !== bJoined) {
+        return bJoined.localeCompare(aJoined);
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   // Financial calculations
   const totalAdvances = projectAdvances.reduce((sum, a) => sum + a.amount, 0);

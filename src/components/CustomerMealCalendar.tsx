@@ -68,21 +68,37 @@ export default function CustomerMealCalendar({
   const [isEditingJoinedDate, setIsEditingJoinedDate] = useState(false);
   const [editJoinedDateValue, setEditJoinedDateValue] = useState('');
 
-  // Filter labours based on search & role
+  // Filter & sort labours based on search, role, status & join date
   const filteredLabours = useMemo(() => {
-    return labours.filter(l => {
-      const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            (l.contact && l.contact.includes(searchTerm));
-      const matchesRole = roleFilter === 'all' || l.role === roleFilter || 
-                          (roleFilter === 'worker' && (!l.role || l.role === 'worker'));
-      return matchesSearch && matchesRole;
-    });
+    return labours
+      .filter(l => {
+        const matchesSearch = l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              (l.contact && l.contact.includes(searchTerm));
+        const matchesRole = roleFilter === 'all' || l.role === roleFilter || 
+                            (roleFilter === 'worker' && (!l.role || l.role === 'worker'));
+        return matchesSearch && matchesRole;
+      })
+      .sort((a, b) => {
+        const aActive = a.status === 'active';
+        const bActive = b.status === 'active';
+        // Active / new members at top, Left members at bottom
+        if (aActive && !bActive) return -1;
+        if (!aActive && bActive) return 1;
+
+        // Newest joined first
+        const aJoined = a.joinedDate || '';
+        const bJoined = b.joinedDate || '';
+        if (aJoined !== bJoined) {
+          return bJoined.localeCompare(aJoined);
+        }
+        return a.name.localeCompare(b.name);
+      });
   }, [labours, searchTerm, roleFilter]);
 
   // Selected Labour Object
   const selectedLabour = useMemo(() => {
-    return labours.find(l => l.id === selectedLabourId) || labours[0] || null;
-  }, [labours, selectedLabourId]);
+    return filteredLabours.find(l => l.id === selectedLabourId) || filteredLabours[0] || labours.find(l => l.id === selectedLabourId) || labours[0] || null;
+  }, [labours, filteredLabours, selectedLabourId]);
 
   // Handle Month Navigation
   const handlePrevMonth = () => {

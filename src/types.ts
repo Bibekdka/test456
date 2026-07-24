@@ -17,10 +17,32 @@ export interface Project extends BaseEntity {
   targetDate: string; // completion timeline
   budget: number;
   status: 'active' | 'completed' | 'on_hold';
+  parentProjectId?: string; // Optional ID of parent main project for multi-site hierarchy
   labourBudget?: number;
   materialBudget?: number;
   foodBudget?: number;
   expenseBudget?: number;
+}
+
+/**
+ * Helper to get all project IDs included in a project's rollup scope.
+ * If project has sub-sites, returns [project.id, ...subSiteIds].
+ * Otherwise, returns [project.id].
+ */
+export function getProjectScopeIds(projectId: string, projects: Project[]): string[] {
+  const scopeSet = new Set<string>([projectId]);
+  
+  const collectChildren = (pId: string) => {
+    projects.forEach(p => {
+      if (p.parentProjectId === pId && !scopeSet.has(p.id)) {
+        scopeSet.add(p.id);
+        collectChildren(p.id);
+      }
+    });
+  };
+
+  collectChildren(projectId);
+  return Array.from(scopeSet);
 }
 
 export type PersonRole = 'worker' | 'contractor' | 'staff' | 'other';
