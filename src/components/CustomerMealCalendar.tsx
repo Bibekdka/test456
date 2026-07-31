@@ -306,9 +306,18 @@ export default function CustomerMealCalendar({
     let totalMeals = 0;
     let absentDays = 0;
     let totalCost = 0;
+    let validDaysInMonth = 0;
+
+    const defaultJoin = activeProject.startDate || '1970-01-01';
+    const joinDate = selectedLabour.joinedDate || defaultJoin;
+    const leftDate = selectedLabour.status === 'left' && selectedLabour.leftDate ? selectedLabour.leftDate : null;
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateStr(day);
+      if (dateStr < joinDate) continue; // Ignore days before person joined
+      if (leftDate && dateStr > leftDate) continue; // Ignore days after person left
+
+      validDaysInMonth++;
       const log = getLogForPersonAndDate(selectedLabour.id, dateStr);
       const st = getMealStatus(log);
       if (st === 'eaten') {
@@ -321,10 +330,10 @@ export default function CustomerMealCalendar({
       }
     }
 
-    const unmarkedDays = daysInMonth - (eatenDays + absentDays);
+    const unmarkedDays = Math.max(0, validDaysInMonth - (eatenDays + absentDays));
 
     return { eatenDays, totalMeals, absentDays, unmarkedDays, totalCost };
-  }, [selectedLabour, currentYear, currentMonth, daysInMonth, foodLogs]);
+  }, [selectedLabour, currentYear, currentMonth, daysInMonth, foodLogs, activeProject]);
 
   if (labours.length === 0) {
     return (
@@ -818,12 +827,16 @@ export default function CustomerMealCalendar({
                 {filteredLabours.map((person) => {
                   const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
                   const joinDate = person.joinedDate || defaultJoin;
+                  const leftDate = person.status === 'left' && person.leftDate ? person.leftDate : null;
 
                   let monthEatenCount = 0;
                   let monthAbsentCount = 0;
 
                   for (let d = 1; d <= daysInMonth; d++) {
                     const dStr = formatDateStr(d);
+                    if (dStr < joinDate) continue; // Skip pre-join days
+                    if (leftDate && dStr > leftDate) continue; // Skip post-left days
+
                     const log = getLogForPersonAndDate(person.id, dStr);
                     const st = getMealStatus(log);
                     if (st === 'eaten') monthEatenCount++;
@@ -857,6 +870,10 @@ export default function CustomerMealCalendar({
                       {Array.from({ length: daysInMonth }).map((_, idx) => {
                         const dayNum = idx + 1;
                         const dateStr = formatDateStr(dayNum);
+                        const isBeforeJoined = dateStr < joinDate;
+                        const isAfterLeft = leftDate ? dateStr > leftDate : false;
+                        const isOutsideService = isBeforeJoined || isAfterLeft;
+
                         const log = getLogForPersonAndDate(person.id, dateStr);
                         const status = getMealStatus(log);
 
@@ -864,21 +881,33 @@ export default function CustomerMealCalendar({
                           <td key={dayNum} className="p-0.5 text-center">
                             <button
                               type="button"
-                              onClick={() => handleQuickToggleDay(person.id, dateStr)}
+                              onClick={() => {
+                                if (isOutsideService) {
+                                  alert(`Cannot mark meals for ${person.name} on ${dateStr} as it falls outside their active service period (Joined: ${joinDate}${leftDate ? `, Left: ${leftDate}` : ''}).`);
+                                  return;
+                                }
+                                handleQuickToggleDay(person.id, dateStr);
+                              }}
                               className={`w-6 h-7 rounded border font-mono text-[10px] font-bold flex items-center justify-center transition cursor-pointer ${
-                                status === 'eaten'
+                                isOutsideService
+                                  ? 'bg-slate-100/60 text-slate-300 border-slate-200/80 cursor-not-allowed opacity-60'
+                                  : status === 'eaten'
                                   ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
                                   : status === 'absent'
                                   ? 'bg-rose-500 text-white border-rose-600 hover:bg-rose-600'
                                   : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
                               }`}
-                              title={`${person.name} - ${dateStr}: ${
-                                status === 'eaten' ? 'Eaten (Click to mark Absent)' :
-                                status === 'absent' ? 'Absent (Click to reset Unmarked)' :
-                                'Unmarked (Click to mark Eaten)'
-                              }`}
+                              title={
+                                isOutsideService
+                                  ? `${person.name} - ${isBeforeJoined ? 'Pre-join date' : 'Left project'} (Joined: ${joinDate})`
+                                  : `${person.name} - ${dateStr}: ${
+                                      status === 'eaten' ? 'Eaten (Click to mark Absent)' :
+                                      status === 'absent' ? 'Absent (Click to reset Unmarked)' :
+                                      'Unmarked (Click to mark Eaten)'
+                                    }`
+                              }
                             >
-                              {status === 'eaten' ? '✓' : status === 'absent' ? '✕' : dayNum}
+                              {isOutsideService ? '-' : status === 'eaten' ? '✓' : status === 'absent' ? '✕' : dayNum}
                             </button>
                           </td>
                         );

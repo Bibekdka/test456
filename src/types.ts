@@ -8,6 +8,20 @@ export interface BaseEntity {
   deletedAt?: number;
 }
 
+export interface ProjectDocument extends BaseEntity {
+  id: string;
+  projectId: string; // construction site ID
+  name: string; // document title e.g. "Site Plan Blueprint v2", "Structural Agreement"
+  category: 'contract' | 'site_plan' | 'approval' | 'estimate' | 'invoice' | 'other';
+  fileType: string; // 'pdf', 'image', 'dwg', 'docx', 'txt', etc.
+  fileName: string; // Original file name
+  fileSize: number; // in bytes
+  dataUrl?: string; // base64 / blob URL for preview and storing file content
+  notes?: string;
+  uploadedAt: string; // ISO date string
+  aiSummary?: string; // Cached AI document insight/analysis
+}
+
 export interface Project extends BaseEntity {
   id: string;
   name: string;
@@ -151,6 +165,7 @@ export interface Payment extends BaseEntity {
   baseWages: number;
   daysWorked: number;
   notes?: string;
+  paidBy?: string; // ID or Name of Payer who made the payment / wage payout
 }
 
 export interface MaterialUsage {
@@ -243,6 +258,34 @@ export interface DailyExpense extends BaseEntity {
   payerId?: string; // Reference to Payer ID or Name who distributed/paid this
   receiptImage?: string; // Base64 data URI of receipt
   receiptImageName?: string;
+}
+
+export interface ProjectPhase extends BaseEntity {
+  id: string;
+  projectId: string;
+  name: string; // e.g., "Excavation & Clearing", "Footing & Foundation", "Column & Beam", "Slab Casting", "Brickwork", "Plastering & Electrical", "Plumbing & Flooring", "Finishing & Painting"
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  status: 'pending' | 'in_progress' | 'completed' | 'delayed';
+  progress: number; // 0 to 100
+  assignedLeader?: string; // e.g., "Er. Rajesh (Site Engineer)"
+  orderIndex: number; // Sequence order
+  notes?: string;
+  linkedDelayLogIds?: string[]; // IDs of DelayWeatherLog causing schedule impact
+}
+
+export interface PettyCashEntry extends BaseEntity {
+  id: string;
+  projectId: string;
+  date: string; // YYYY-MM-DD
+  type: 'top_up' | 'expense'; // 'top_up' (cash given to supervisor) or 'expense' (spent on site)
+  supervisorName: string; // e.g. "Ramesh Kumar (Site Engineer)"
+  amount: number;
+  category?: 'tea_snacks' | 'fuel' | 'small_hardware' | 'site_transport' | 'emergency_labour' | 'top_up' | 'other';
+  description: string;
+  receiptImage?: string; // Base64 photo URI
+  receiptImageName?: string;
+  payerId?: string; // Payer/Partner who disbursed top-up funds
 }
 
 export function parseDateUTC(dateStr: string): Date {

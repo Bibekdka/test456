@@ -254,6 +254,7 @@ export default function LabourManager({
     } else {
       if (onRecordPayment) {
         const stats = getLabourStats(worker);
+        const selectedPayer = payers.find(p => p.id === trxPayerId);
         onRecordPayment({
           id: generateId('pay'),
           labourId: selectedLabourId,
@@ -264,6 +265,7 @@ export default function LabourManager({
           baseWages: stats ? stats.baseWages : 0,
           daysWorked: stats ? stats.daysWorked : 0,
           notes: trxNotes.trim() || 'Wage Payout',
+          paidBy: selectedPayer ? selectedPayer.name : (trxPayerId || undefined),
         });
         alert(`Wage Payout of ₹${amount} successfully logged for ${worker.name}`);
       }
@@ -314,6 +316,7 @@ export default function LabourManager({
         labourName: labour ? labour.name : 'Unknown Worker',
         amount: p.amountPaid,
         notes: p.notes || 'Regular wage payout',
+        payer: p.paidBy,
       };
     }),
     ...activeProjectAdvances.map(a => {

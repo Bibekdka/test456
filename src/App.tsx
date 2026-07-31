@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense, ProjectDocument, ProjectPhase, PettyCashEntry } from './types';
 import {
   initDB,
   getAllItems,
@@ -13,7 +13,8 @@ import {
   seedSampleDataIfEmpty,
   clearStore,
   deleteItems,
-  putItems
+  putItems,
+  deleteDocumentBlob
 } from './db';
 
 import { generateId } from './utils/id';
@@ -65,6 +66,8 @@ import SiteDiary from './components/SiteDiary';
 import DelayWeatherTracker from './components/DelayWeatherTracker';
 import DailyExpensesTracker from './components/DailyExpensesTracker';
 import BackupPromptBanner from './components/BackupPromptBanner';
+import GanttPhaseTimeline from './components/GanttPhaseTimeline';
+import PettyCashRegister from './components/PettyCashRegister';
 
 import {
   Briefcase,
@@ -92,10 +95,13 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  ChevronLeft
+  ChevronLeft,
+  Layers,
+  Wallet,
+  CloudOff
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses';
+type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses' | 'phases' | 'pettycash';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -115,6 +121,9 @@ export default function App() {
   const [siteDiaries, setSiteDiaries] = useState<SiteDiaryEntry[]>([]);
   const [delayWeatherLogs, setDelayWeatherLogs] = useState<DelayWeatherLog[]>([]);
   const [dailyExpenses, setDailyExpenses] = useState<DailyExpense[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<ProjectDocument[]>([]);
+  const [projectPhases, setProjectPhases] = useState<ProjectPhase[]>([]);
+  const [pettyCashEntries, setPettyCashEntries] = useState<PettyCashEntry[]>([]);
   const [isWeatherFetching, setIsWeatherFetching] = useState<boolean>(false);
 
   // Selected Active Project
@@ -144,6 +153,20 @@ export default function App() {
 
   // Food Expense Calculation custom start date
   const [foodCalculationStartDate, setFoodCalculationStartDate] = useState<string>('');
+
+  // Offline Pending Changes Queue State
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => {
+    const val = localStorage.getItem('pending_offline_count');
+    return val ? parseInt(val, 10) || 0 : 0;
+  });
+
+  const registerOfflineMutation = () => {
+    setPendingOfflineCount(prev => {
+      const next = prev + 1;
+      localStorage.setItem('pending_offline_count', String(next));
+      return next;
+    });
+  };
 
   // Backup tracking state
   const [lastBackupDate, setLastBackupDate] = useState<string | null>(() => {
@@ -193,32 +216,43 @@ export default function App() {
   ]);
 
   const triggerSync = async (reason: string = 'Manual sync', isFullSync: boolean = false) => {
-    if (!navigator.onLine) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      registerOfflineMutation();
       return;
     }
     setSyncing(true);
     try {
       const res = isFullSync ? await performFullSync() : await performIncrementalSync();
       const timestamp = new Date().toLocaleTimeString();
-      setLastSynced(timestamp);
+      if (res.success) {
+        setLastSynced(timestamp);
+        setPendingOfflineCount(0);
+        localStorage.removeItem('pending_offline_count');
+      } else {
+        registerOfflineMutation();
+      }
       setSyncHistory(prev => [
         `[${timestamp}] ${reason} - ${res.message}`,
         ...prev.slice(0, 4)
       ]);
     } catch (err: any) {
-      console.error('Incremental sync failed, falling back:', err);
+      registerOfflineMutation();
       try {
         const res = await performFullSync();
         const timestamp = new Date().toLocaleTimeString();
-        setLastSynced(timestamp);
+        if (res.success) {
+          setLastSynced(timestamp);
+          setPendingOfflineCount(0);
+          localStorage.removeItem('pending_offline_count');
+        }
         setSyncHistory(prev => [
-          `[${timestamp}] ${reason} - Full sync fallback succeeded.`,
+          `[${timestamp}] ${reason} - ${res.message || 'Full sync completed.'}`,
           ...prev.slice(0, 4)
         ]);
-      } catch (fallbackErr) {
+      } catch (fallbackErr: any) {
         const timestamp = new Date().toLocaleTimeString();
         setSyncHistory(prev => [
-          `[${timestamp}] Sync Failed: ${err?.message || 'Server error'}`,
+          `[${timestamp}] Sync Note: ${err?.message || 'Local storage active.'}`,
           ...prev.slice(0, 4)
         ]);
       }
@@ -271,6 +305,24 @@ export default function App() {
       } catch (err) {
         console.warn('daily_expenses store might not exist yet', err);
       }
+      let docList: ProjectDocument[] = [];
+      try {
+        docList = await getAllItems<ProjectDocument>('project_documents');
+      } catch (err) {
+        console.warn('project_documents store might not exist yet', err);
+      }
+      let phaseList: ProjectPhase[] = [];
+      try {
+        phaseList = await getAllItems<ProjectPhase>('project_phases');
+      } catch (err) {
+        console.warn('project_phases store might not exist yet', err);
+      }
+      let pettyCashList: PettyCashEntry[] = [];
+      try {
+        pettyCashList = await getAllItems<PettyCashEntry>('petty_cash_entries');
+      } catch (err) {
+        console.warn('petty_cash_entries store might not exist yet', err);
+      }
 
       // Try fetching from the server
       try {
@@ -295,6 +347,9 @@ export default function App() {
             const sdRes = mergeStoreItems(sdList, serverDb.site_diaries || []);
             const dwRes = mergeStoreItems(dwList, serverDb.delay_weather_logs || []);
             const expRes = mergeStoreItems(expList, serverDb.daily_expenses || []);
+            const docRes = mergeStoreItems(docList, serverDb.project_documents || []);
+            const phaseRes = mergeStoreItems(phaseList, serverDb.project_phases || []);
+            const pettyCashRes = mergeStoreItems(pettyCashList, serverDb.petty_cash_entries || []);
 
             // Clean up any attendance records before worker joined date
             const labourMap = new Map((lRes.merged as Labour[]).map(l => [l.id, l]));
@@ -319,6 +374,9 @@ export default function App() {
             sdList = sdRes.merged;
             dwList = dwRes.merged;
             expList = expRes.merged;
+            docList = docRes.merged;
+            phaseList = phaseRes.merged;
+            pettyCashList = pettyCashRes.merged;
 
             // Persist merged stores into local IndexedDB while preserving timestamps
             await putItems('projects', pList, true);
@@ -334,11 +392,14 @@ export default function App() {
             await putItems('site_diaries', sdList, true);
             await putItems('delay_weather_logs', dwList, true);
             await putItems('daily_expenses', expList, true);
+            await putItems('project_documents', docList, true);
+            await putItems('project_phases', phaseList, true);
+            await putItems('petty_cash_entries', pettyCashList, true);
 
             const hasLocalNewerData = pRes.hasLocalChanges || lRes.hasLocalChanges || attRes.hasLocalChanges ||
               advRes.hasLocalChanges || payRes.hasLocalChanges || matRes.hasLocalChanges || haRes.hasLocalChanges ||
               flRes.hasLocalChanges || gstRes.hasLocalChanges || payersRes.hasLocalChanges || sdRes.hasLocalChanges ||
-              dwRes.hasLocalChanges || expRes.hasLocalChanges;
+              dwRes.hasLocalChanges || expRes.hasLocalChanges || docRes.hasLocalChanges || phaseRes.hasLocalChanges || pettyCashRes.hasLocalChanges;
 
             if (hasLocalNewerData) {
               const payload = {
@@ -355,6 +416,9 @@ export default function App() {
                 site_diaries: sdList,
                 delay_weather_logs: dwList,
                 daily_expenses: expList,
+                project_documents: docList,
+                project_phases: phaseList,
+                petty_cash_entries: pettyCashList,
               };
               await fetch('/api/db/sync', {
                 method: 'POST',
@@ -378,6 +442,9 @@ export default function App() {
               site_diaries: sdList,
               delay_weather_logs: dwList,
               daily_expenses: expList,
+              project_documents: docList,
+              project_phases: phaseList,
+              petty_cash_entries: pettyCashList,
             };
             await fetch('/api/db/sync', {
               method: 'POST',
@@ -445,6 +512,10 @@ export default function App() {
         const remainingDiaries = sdList.filter(d => !projectsToDelete.some(pd => pd.id === d.projectId));
         const remainingDelays = dwList.filter(d => !projectsToDelete.some(pd => pd.id === d.projectId));
         const remainingExpenses = expList.filter(e => !projectsToDelete.some(pd => pd.id === e.projectId));
+        const remainingDocs = docList.filter(d => !projectsToDelete.some(pd => pd.id === d.projectId));
+
+        const remainingPhases = phaseList.filter(p => !projectsToDelete.some(pd => pd.id === p.projectId));
+        const remainingPettyCash = pettyCashList.filter(pc => !projectsToDelete.some(pd => pd.id === pc.projectId));
 
         setProjects(remainingProjects);
         setLabours(lList);
@@ -459,6 +530,9 @@ export default function App() {
         setSiteDiaries(remainingDiaries);
         setDelayWeatherLogs(remainingDelays);
         setDailyExpenses(remainingExpenses);
+        setProjectDocuments(remainingDocs);
+        setProjectPhases(remainingPhases);
+        setPettyCashEntries(remainingPettyCash);
 
         if (remainingProjects.length > 0) {
           setActiveProjectId(remainingProjects[0].id);
@@ -479,6 +553,9 @@ export default function App() {
         setSiteDiaries(sdList);
         setDelayWeatherLogs(dwList);
         setDailyExpenses(expList);
+        setProjectDocuments(docList);
+        setProjectPhases(phaseList);
+        setPettyCashEntries(pettyCashList);
 
         if (pList.length > 0) {
           setActiveProjectId(pList[0].id);
@@ -687,12 +764,47 @@ export default function App() {
     await deleteItems('delay_weather_logs', deletedDelays.map(x => x.id));
     setDelayWeatherLogs(cascadeDelays);
 
+    const cascadeDocs = projectDocuments.filter(d => d.projectId !== id);
+    const deletedDocs = projectDocuments.filter(d => d.projectId === id);
+    await deleteItems('project_documents', deletedDocs.map(x => x.id));
+    setProjectDocuments(cascadeDocs);
+
     if (activeProjectId === id) {
       const remaining = projects.filter(p => p.id !== id);
       setActiveProjectId(remaining.length > 0 ? remaining[0].id : null);
     }
     if (navigator.onLine) {
       triggerSync('Auto-sync: Deleted project', true);
+    }
+  };
+
+  // ----------------------------------------------------
+  // Project Document operations
+  // ----------------------------------------------------
+  const handleAddDocument = async (doc: ProjectDocument) => {
+    await putItem('project_documents', doc);
+    setProjectDocuments(prev => [doc, ...prev]);
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Uploaded project document');
+    }
+  };
+
+  const handleUpdateDocument = async (doc: ProjectDocument) => {
+    await putItem('project_documents', doc);
+    setProjectDocuments(prev => prev.map(d => d.id === doc.id ? doc : d));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated document details');
+    }
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    const doc = projectDocuments.find(d => d.id === id);
+    if (doc) {
+      const deletedDoc = { ...doc, deletedAt: Date.now() };
+      await putItem('project_documents', deletedDoc);
+      await deleteDocumentBlob(id);
+      setProjectDocuments(prev => prev.filter(d => d.id !== id));
+      triggerSync('Auto-sync: Removed project document');
     }
   };
 
@@ -1008,6 +1120,56 @@ export default function App() {
   };
 
   // ----------------------------------------------------
+  // Project Phase (Gantt) operations
+  // ----------------------------------------------------
+  const handleAddPhase = async (phase: Omit<ProjectPhase, 'id'>) => {
+    const newPhase: ProjectPhase = {
+      ...phase,
+      id: generateId()
+    };
+    await putItem('project_phases', newPhase);
+    setProjectPhases(prev => [...prev, newPhase]);
+    triggerSync('Auto-sync: Added project phase');
+  };
+
+  const handleUpdatePhase = async (phase: ProjectPhase) => {
+    await putItem('project_phases', phase);
+    setProjectPhases(prev => prev.map(item => item.id === phase.id ? phase : item));
+    triggerSync('Auto-sync: Updated project phase');
+  };
+
+  const handleDeletePhase = async (id: string) => {
+    await deleteItem('project_phases', id);
+    setProjectPhases(prev => prev.filter(item => item.id !== id));
+    triggerSync('Auto-sync: Deleted project phase', true);
+  };
+
+  // ----------------------------------------------------
+  // Petty Cash Register operations
+  // ----------------------------------------------------
+  const handleAddPettyCash = async (entry: Omit<PettyCashEntry, 'id'>) => {
+    const newEntry: PettyCashEntry = {
+      ...entry,
+      id: generateId()
+    };
+    await putItem('petty_cash_entries', newEntry);
+    setPettyCashEntries(prev => [...prev, newEntry]);
+    triggerSync('Auto-sync: Disbursed/Recorded petty cash entry');
+  };
+
+  const handleUpdatePettyCash = async (entry: PettyCashEntry) => {
+    await putItem('petty_cash_entries', entry);
+    setPettyCashEntries(prev => prev.map(item => item.id === entry.id ? entry : item));
+    triggerSync('Auto-sync: Updated petty cash entry');
+  };
+
+  const handleDeletePettyCash = async (id: string) => {
+    await deleteItem('petty_cash_entries', id);
+    setPettyCashEntries(prev => prev.filter(item => item.id !== id));
+    triggerSync('Auto-sync: Deleted petty cash entry', true);
+  };
+
+  // ----------------------------------------------------
   // Database backup import
   // ----------------------------------------------------
   const handleImportBackup = async (backupData: any) => {
@@ -1132,6 +1294,7 @@ export default function App() {
   const navItems = [
     { id: 'dashboard', label: 'Overall Dashboard', icon: BarChart3, iconColor: 'text-indigo-500', badge: 'All', category: 'Navigation' },
     { id: 'projects', label: 'Projects & Timeline', icon: Briefcase, iconColor: 'text-blue-500', badge: projects.length.toString(), category: 'Navigation' },
+    { id: 'phases', label: 'Gantt & Phase Schedule', icon: Layers, iconColor: 'text-indigo-600 dark:text-indigo-400', badge: projectPhases.length.toString(), category: 'Navigation' },
     { id: 'labours', label: 'Labour Registry', icon: Users, iconColor: 'text-teal-500', badge: labours.filter(l => l.status === 'active').length.toString(), category: 'Navigation' },
     { id: 'attendance', label: 'Daily Attendance', icon: CalendarDays, iconColor: 'text-emerald-500', category: 'Navigation' },
     { id: 'payments', label: 'Wages & Payouts', icon: CircleDollarSign, iconColor: 'text-amber-500', category: 'Navigation' },
@@ -1141,6 +1304,7 @@ export default function App() {
     { id: 'reports', label: 'Ledgers & Backups', icon: FileBarChart2, iconColor: 'text-slate-500', category: 'Navigation' },
     
     { id: 'analysis', label: 'Cost Analysis', icon: TrendingUp, iconColor: 'text-indigo-600 dark:text-indigo-400', badge: 'Live', category: 'Costing & Food' },
+    { id: 'pettycash', label: 'Supervisor Petty Cash', icon: Wallet, iconColor: 'text-amber-600 dark:text-amber-400', badge: pettyCashEntries.length.toString(), category: 'Costing & Food' },
     { id: 'food', label: 'Hotel Food (Rs. 100)', icon: Utensils, iconColor: 'text-amber-500', category: 'Costing & Food' },
     { id: 'expenses', label: 'Daily Expenses & Misc', icon: Receipt, iconColor: 'text-emerald-500', category: 'Costing & Food' },
     { id: 'gst', label: 'GST Invoices', icon: Percent, iconColor: 'text-violet-500', category: 'Costing & Food' },
@@ -1208,6 +1372,25 @@ export default function App() {
                   </>
                 )}
               </div>
+
+              {/* Offline Pending Queue Badge */}
+              {(!isOnline || pendingOfflineCount > 0) && (
+                <div 
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono font-bold border shadow-xs animate-in fade-in ${
+                    pendingOfflineCount > 0 
+                      ? 'bg-amber-500 text-slate-950 border-amber-600 dark:bg-amber-400 dark:border-amber-300' 
+                      : 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-900/60 dark:text-amber-200 dark:border-amber-700'
+                  }`}
+                  title="Local modifications saved in IndexedDB ready to auto-sync when connection is restored"
+                >
+                  <CloudOff className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    {pendingOfflineCount > 0
+                      ? `${pendingOfflineCount} offline ${pendingOfflineCount === 1 ? 'change' : 'changes'} saved — ready to auto-sync`
+                      : 'Offline mode active'}
+                  </span>
+                </div>
+              )}
 
               {/* Sync Now button */}
               <button
@@ -1415,10 +1598,14 @@ export default function App() {
               dailyExpenses={dailyExpenses}
               foodCalculationStartDate={foodCalculationStartDate}
               activeProjectId={activeProjectId}
+              projectDocuments={projectDocuments}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}
               onUpdateProject={handleUpdateProject}
               onDeleteProject={handleDeleteProject}
+              onAddDocument={handleAddDocument}
+              onUpdateDocument={handleUpdateDocument}
+              onDeleteDocument={handleDeleteDocument}
             />
           )}
 
@@ -1467,6 +1654,7 @@ export default function App() {
               attendanceRecords={attendanceRecords}
               advanceRecords={advanceRecords}
               paymentRecords={paymentRecords}
+              payers={payers}
               onRecordPayment={handleRecordPayment}
               onDeletePayment={handleDeletePayment}
               onDeleteAdvance={handleDeleteAdvance}
@@ -1499,6 +1687,9 @@ export default function App() {
               foodLogs={foodLogs}
               payers={payers}
               dailyExpenses={dailyExpenses}
+              projectPhases={projectPhases}
+              pettyCashEntries={pettyCashEntries}
+              projectDocuments={projectDocuments}
               onImportBackup={handleImportBackup}
               onExportBackup={handleExportBackup}
               foodCalculationStartDate={foodCalculationStartDate}
@@ -1565,6 +1756,32 @@ export default function App() {
               onDeleteDelayWeatherLog={handleDeleteDelayWeatherLog}
               onFetchWeather={fetchWeatherForProject}
               isWeatherFetching={isWeatherFetching}
+            />
+          )}
+
+          {activeTab === 'phases' && (
+            <GanttPhaseTimeline
+              projects={projects}
+              activeProjectId={activeProjectId}
+              onSelectProject={setActiveProjectId}
+              projectPhases={projectPhases}
+              delayWeatherLogs={delayWeatherLogs}
+              onAddPhase={handleAddPhase}
+              onUpdatePhase={handleUpdatePhase}
+              onDeletePhase={handleDeletePhase}
+            />
+          )}
+
+          {activeTab === 'pettycash' && (
+            <PettyCashRegister
+              projects={projects}
+              activeProjectId={activeProjectId}
+              onSelectProject={setActiveProjectId}
+              pettyCashEntries={pettyCashEntries}
+              payers={payers}
+              onAddEntry={handleAddPettyCash}
+              onUpdateEntry={handleUpdatePettyCash}
+              onDeleteEntry={handleDeletePettyCash}
             />
           )}
 

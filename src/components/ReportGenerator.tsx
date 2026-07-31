@@ -4,11 +4,12 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, GstRecord, SiteDiaryEntry, DelayWeatherLog, HotelAdvance, FoodLog, Payer, DailyExpense, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
-import { FileDown, Download, Upload, ShieldCheck, Database, Calendar, Landmark, AlertCircle, Printer, Image, Search, Eye, Filter, CheckCircle2, X } from 'lucide-react';
+import { Project, Labour, Attendance, Advance, Payment, Material, GstRecord, SiteDiaryEntry, DelayWeatherLog, HotelAdvance, FoodLog, Payer, DailyExpense, ProjectPhase, PettyCashEntry, ProjectDocument, getAttendanceFoodDaysAndCost, getLabourDaysWorked } from '../types';
+import { FileDown, Download, Upload, ShieldCheck, Database, Calendar, Landmark, AlertCircle, Printer, Image, Search, Eye, Filter, CheckCircle2, X, FileArchive, Loader2 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { exportCompleteSiteZip } from '../utils/zipExporter';
 
 interface ReportGeneratorProps {
   activeProject: Project | null;
@@ -25,6 +26,9 @@ interface ReportGeneratorProps {
   foodLogs: FoodLog[];
   payers: Payer[];
   dailyExpenses: DailyExpense[];
+  projectPhases?: ProjectPhase[];
+  pettyCashEntries?: PettyCashEntry[];
+  projectDocuments?: ProjectDocument[];
   onImportBackup: (backupData: any) => void;
   onExportBackup?: () => void;
   foodCalculationStartDate?: string;
@@ -45,6 +49,9 @@ export default function ReportGenerator({
   foodLogs,
   payers,
   dailyExpenses,
+  projectPhases = [],
+  pettyCashEntries = [],
+  projectDocuments = [],
   onImportBackup,
   onExportBackup,
   foodCalculationStartDate = '',
@@ -53,6 +60,41 @@ export default function ReportGenerator({
   const [lightboxImage, setLightboxImage] = useState<{ src: string; title: string; date: string; category: string; desc: string; amount: string; name: string } | null>(null);
   const [snapsSearch, setSnapsSearch] = useState('');
   const [snapsCategory, setSnapsCategory] = useState<'all' | 'materials' | 'expenses'>('all');
+
+  const [isExportingZip, setIsExportingZip] = useState(false);
+  const [zipProgressMsg, setZipProgressMsg] = useState<string | null>(null);
+
+  const handleExportZip = async () => {
+    try {
+      setIsExportingZip(true);
+      setZipProgressMsg('Initializing complete site data bundle...');
+      await exportCompleteSiteZip({
+        projects,
+        labours,
+        attendanceRecords,
+        advanceRecords,
+        paymentRecords,
+        materials,
+        gstRecords,
+        siteDiaries,
+        delayWeatherLogs,
+        dailyExpenses,
+        projectPhases,
+        pettyCashEntries,
+        projectDocuments,
+        hotelAdvances,
+        foodLogs,
+        payers,
+        onProgress: (msg) => setZipProgressMsg(msg)
+      });
+    } catch (err: any) {
+      console.error('ZIP export error:', err);
+      alert('Failed to generate ZIP archive: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsExportingZip(false);
+      setZipProgressMsg(null);
+    }
+  };
 
   if (!activeProject) {
     return (
@@ -1083,26 +1125,67 @@ export default function ReportGenerator({
       </div>
 
       {/* Reports Generation Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <h3 className="font-bold text-slate-800 text-base">Export Site Statements</h3>
-          <p className="text-slate-500 text-sm leading-relaxed">
-            Generate formal, compiled ledgers of this construction site. These reports pack all materials purchased, stock depletion cycles, attendance summaries, advances, and payouts clearly formatted.
-          </p>
-          <div className="flex flex-wrap gap-3 pt-2">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <FileDown className="w-5 h-5 text-slate-700" /> Export Site Statements
+            </h3>
+            <p className="text-slate-500 text-sm leading-relaxed mt-2">
+              Generate formal, compiled ledgers of this construction site. These reports pack all materials purchased, stock depletion cycles, attendance summaries, advances, and payouts clearly formatted.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 mt-2">
             <button
               onClick={downloadPDFReport}
-              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition cursor-pointer shadow-sm hover:shadow"
+              className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-sm hover:shadow"
             >
-              <Download className="w-4 h-4" />
+              <Download className="w-3.5 h-3.5" />
               Download PDF Report
             </button>
             <button
               onClick={downloadExcelReport}
-              className="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg text-sm font-semibold transition cursor-pointer shadow-sm"
+              className="inline-flex items-center gap-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-sm"
             >
-              <FileDown className="w-4 h-4 text-emerald-600" />
-              Download Excel Workbook
+              <FileDown className="w-3.5 h-3.5 text-emerald-600" />
+              Excel Workbook
+            </button>
+          </div>
+        </div>
+
+        {/* Complete Site Data Exporter (.ZIP) */}
+        <div className="bg-white border border-indigo-200/80 rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between relative overflow-hidden">
+          <div>
+            <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+              <FileArchive className="w-5 h-5 text-indigo-600" /> Complete Site Archive (.ZIP)
+            </h3>
+            <p className="text-slate-500 text-sm leading-relaxed mt-2">
+              Bundles all PDF reports, CSV data ledgers, site logs, weather delay records, and original uploaded contract files neatly organized into folders by project name.
+            </p>
+            {zipProgressMsg && (
+              <div className="mt-2 text-xs font-mono text-indigo-700 bg-indigo-50 border border-indigo-100 p-2 rounded-lg flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 shrink-0" />
+                <span className="truncate">{zipProgressMsg}</span>
+              </div>
+            )}
+          </div>
+          <div className="pt-2 border-t border-slate-100 mt-2">
+            <button
+              onClick={handleExportZip}
+              disabled={isExportingZip}
+              className="w-full inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer shadow-sm"
+            >
+              {isExportingZip ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Bundling .ZIP Archive...
+                </>
+              ) : (
+                <>
+                  <FileArchive className="w-4 h-4" />
+                  Export .ZIP Data Bundle
+                </>
+              )}
             </button>
           </div>
         </div>

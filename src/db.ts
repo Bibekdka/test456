@@ -6,7 +6,7 @@
 import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
 
 const DB_NAME = 'ConstructionManagerDB';
-const DB_VERSION = 7;
+const DB_VERSION = 10;
 
 export function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -37,7 +37,11 @@ export function initDB(): Promise<IDBDatabase> {
         'payers',
         'site_diaries',
         'delay_weather_logs',
-        'daily_expenses'
+        'daily_expenses',
+        'project_documents',
+        'project_phases',
+        'petty_cash_entries',
+        'document_blobs'
       ];
 
       // Ensure stores exist
@@ -62,7 +66,7 @@ export function initDB(): Promise<IDBDatabase> {
       // Add indexes for all relational queries
       stores.forEach(s => addIndexSafely(s, 'updatedAt', 'updatedAt'));
 
-      ['attendance', 'advances', 'payments', 'materials', 'hotel_advances', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses'].forEach(s => {
+      ['attendance', 'advances', 'payments', 'materials', 'hotel_advances', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses', 'project_documents', 'project_phases', 'petty_cash_entries'].forEach(s => {
         addIndexSafely(s, 'projectId', 'projectId');
       });
 
@@ -70,7 +74,7 @@ export function initDB(): Promise<IDBDatabase> {
         addIndexSafely(s, 'labourId', 'labourId');
       });
 
-      ['attendance', 'advances', 'payments', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses'].forEach(s => {
+      ['attendance', 'advances', 'payments', 'food_logs', 'gst_records', 'site_diaries', 'delay_weather_logs', 'daily_expenses', 'petty_cash_entries'].forEach(s => {
         addIndexSafely(s, 'date', 'date');
       });
 
@@ -210,6 +214,47 @@ export function clearStore(storeName: string): Promise<void> {
       })
       .catch(reject);
   });
+}
+
+/**
+ * Lazy Document Storage: Store heavy file data URL blobs separately in IndexedDB
+ * so metadata syncs and page loads remain instant even with hundreds of blueprint files.
+ */
+export function putDocumentBlob(id: string, dataUrl: string): Promise<void> {
+  if (!id || !dataUrl) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    getStore('document_blobs', 'readwrite')
+      .then(({ store }) => {
+        const request = store.put({ id, dataUrl, updatedAt: Date.now() });
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      })
+      .catch(reject);
+  });
+}
+
+export function getDocumentBlob(id: string): Promise<string | undefined> {
+  if (!id) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    getStore('document_blobs', 'readonly')
+      .then(({ store }) => {
+        const request = store.get(id);
+        request.onsuccess = () => {
+          if (request.result && request.result.dataUrl) {
+            resolve(request.result.dataUrl);
+          } else {
+            resolve(undefined);
+          }
+        };
+        request.onerror = () => resolve(undefined);
+      })
+      .catch(() => resolve(undefined));
+  });
+}
+
+export function deleteDocumentBlob(id: string): Promise<void> {
+  if (!id) return Promise.resolve();
+  return deleteItem('document_blobs', id).catch(() => {});
 }
 
 // Helper to seed sample data if the DB is empty

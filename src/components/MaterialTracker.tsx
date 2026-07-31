@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { Project, Material, MaterialUsage } from '../types';
 import { generateId } from '../utils/id';
-import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil } from 'lucide-react';
+import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface MaterialTrackerProps {
@@ -27,6 +27,7 @@ export default function MaterialTracker({
   const [showAddForm, setShowAddForm] = useState(false);
   const [activeUsageFormId, setActiveUsageFormId] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; title: string } | null>(null);
+  const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
 
   // ConfirmModal states
   const [confirmDeleteMaterial, setConfirmDeleteMaterial] = useState<Material | null>(null);
@@ -354,27 +355,74 @@ export default function MaterialTracker({
       </div>
 
       {lowStockMaterials.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 text-amber-900">
-          <div className="p-1.5 bg-amber-100 rounded-md text-amber-700 shrink-0 mt-0.5 font-sans text-sm">
-            ⚠️
-          </div>
-          <div className="space-y-1">
-            <h4 className="font-bold text-sm">Material Stock Alerts ({lowStockMaterials.length} running low)</h4>
-            <p className="text-xs text-amber-700 leading-relaxed">
-              The following materials are currently at or below their critical thresholds. Arrange acquisitions immediately to prevent on-site delays:
-            </p>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {lowStockMaterials.map(m => {
-                const totalUsed = m.usages.reduce((sum, u) => sum + u.quantityUsed, 0);
-                const remaining = m.quantityBought - totalUsed;
-                return (
-                  <span key={m.id} className="inline-flex items-center gap-1 bg-amber-100 text-amber-950 px-2.5 py-1 rounded-full text-xs font-semibold border border-amber-200 font-mono">
-                    {m.name}: <strong className="text-rose-700">{remaining} {m.unit}</strong> left (Min Limit: {m.alertThreshold} {m.unit})
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-900 transition-all duration-200 shadow-2xs">
+          <div
+            className="flex items-center justify-between cursor-pointer select-none"
+            onClick={() => setIsAlertsCollapsed(!isAlertsCollapsed)}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-amber-100 rounded-md text-amber-800 shrink-0 font-sans text-sm flex items-center justify-center">
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-amber-950 flex items-center gap-2">
+                  Critical Material Stock Alerts
+                  <span className="bg-amber-200 text-amber-900 text-xs font-black px-2 py-0.5 rounded-full">
+                    {lowStockMaterials.length} running low
                   </span>
-                );
-              })}
+                </h4>
+                {isAlertsCollapsed && (
+                  <p className="text-xs text-amber-700 mt-0.5 line-clamp-1 font-mono">
+                    {lowStockMaterials.map(m => {
+                      const totalUsed = m.usages.reduce((sum, u) => sum + u.quantityUsed, 0);
+                      const remaining = m.quantityBought - totalUsed;
+                      return `${m.name} (${remaining} ${m.unit} left)`;
+                    }).join(' • ')}
+                  </p>
+                )}
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAlertsCollapsed(!isAlertsCollapsed);
+              }}
+              className="text-xs font-bold text-amber-800 hover:text-amber-950 bg-amber-100/90 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              {isAlertsCollapsed ? (
+                <>
+                  <span>Expand Alerts</span>
+                  <ChevronDown className="w-4 h-4" />
+                </>
+              ) : (
+                <>
+                  <span>Collapse Alerts</span>
+                  <ChevronUp className="w-4 h-4" />
+                </>
+              )}
+            </button>
           </div>
+
+          {!isAlertsCollapsed && (
+            <div className="mt-3 pt-3 border-t border-amber-200/80 space-y-2">
+              <p className="text-xs text-amber-800 leading-relaxed">
+                The following materials are currently at or below their critical thresholds. Arrange acquisitions immediately to prevent on-site delays:
+              </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {lowStockMaterials.map(m => {
+                  const totalUsed = m.usages.reduce((sum, u) => sum + u.quantityUsed, 0);
+                  const remaining = m.quantityBought - totalUsed;
+                  return (
+                    <span key={m.id} className="inline-flex items-center gap-1 bg-amber-100/90 text-amber-950 px-2.5 py-1 rounded-full text-xs font-semibold border border-amber-200 font-mono shadow-2xs">
+                      {m.name}: <strong className="text-rose-700 font-bold">{remaining} {m.unit}</strong> left (Min Limit: {m.alertThreshold} {m.unit})
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

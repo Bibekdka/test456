@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { z } from 'zod';
+import { GoogleGenAI } from '@google/genai';
 
 const app = express();
 const PORT = 3000;
@@ -30,7 +31,10 @@ const DatabaseSchema = z.object({
   payers: z.array(BaseEntitySchema).default([]),
   site_diaries: z.array(BaseEntitySchema).default([]),
   delay_weather_logs: z.array(BaseEntitySchema).default([]),
-  daily_expenses: z.array(BaseEntitySchema).default([])
+  daily_expenses: z.array(BaseEntitySchema).default([]),
+  project_documents: z.array(BaseEntitySchema).default([]),
+  project_phases: z.array(BaseEntitySchema).default([]),
+  petty_cash_entries: z.array(BaseEntitySchema).default([])
 });
 
 const DeltaSyncSchema = z.object({
@@ -61,7 +65,10 @@ function initializeServerDb() {
       payers: [],
       site_diaries: [],
       delay_weather_logs: [],
-      daily_expenses: []
+      daily_expenses: [],
+      project_documents: [],
+      project_phases: [],
+      petty_cash_entries: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialSchema, null, 2), 'utf-8');
   }
@@ -153,7 +160,8 @@ app.post('/api/db/sync/delta', (req, res) => {
     const storeKeys = [
       'projects', 'labours', 'attendance', 'advances', 'payments',
       'materials', 'hotel_advances', 'food_logs', 'gst_records',
-      'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses'
+      'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses',
+      'project_documents'
     ];
 
     const serverUpdates: Record<string, any[]> = {};
@@ -201,6 +209,78 @@ app.post('/api/db/sync/delta', (req, res) => {
   } catch (error) {
     console.error('Error during delta sync:', error);
     res.status(500).json({ error: 'Failed to process incremental sync' });
+  }
+});
+
+// AI Document Insights & Site Planning Analysis Route
+app.post('/api/gemini/document-insights', async (req, res) => {
+  try {
+    const { documentName, category, notes, fileType, dataUrl, projectContext, question } = req.body || {};
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({
+        error: 'GEMINI_API_KEY environment variable is missing on server.'
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: { 'User-Agent': 'aistudio-build' }
+      }
+    });
+
+    const promptText = `
+You are an expert Civil Engineering Consultant, Construction Manager, and Quantity Surveyor.
+Analyze the following project document and provide high-value, actionable site planning insights and recommendations.
+
+DOCUMENT DETAILS:
+- Document Name: ${documentName || 'Untitled Document'}
+- Document Category: ${category || 'General'}
+- File Type: ${fileType || 'Unknown'}
+- User Notes / Context: ${notes || 'None provided'}
+- Site Context: ${projectContext ? `Project Name: ${projectContext.name || 'Site'}, Budget: ₹${projectContext.budget || 0}, Target Date: ${projectContext.targetDate || 'N/A'}` : 'Construction Project'}
+${question ? `- Custom User Question: "${question}"` : ''}
+
+Provide a well-structured, professional breakdown in Markdown format with the following clearly labeled sections:
+1. **Document Summary & Scope Overview**: Executive overview of what this document represents for the site.
+2. **Potential Risks & Regulatory / Financial Watchpoints**: Critical potential bottlenecks, penalty terms, structural considerations, or budget overruns to watch out for.
+3. **Smart Site Planning & Resource Suggestions**: Recommendations for manpower allocation, material scheduling, phase sequencing, or safety measures based on this document.
+4. **Key Milestones & Immediate Next Steps**: 3 to 5 clear action items for the site engineer / contractor.
+`;
+
+    const parts: any[] = [{ text: promptText }];
+
+    // If an image file (e.g. site plan, drawing, blueprint, invoice scan) is attached as base64
+    if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+      const match = dataUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          inlineData: {
+            mimeType: match[1],
+            data: match[2]
+          }
+        });
+      }
+    }
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: { parts }
+    });
+
+    const insightsText = response.text || 'No insights could be generated for this document.';
+
+    res.json({
+      success: true,
+      insights: insightsText
+    });
+  } catch (err: any) {
+    console.error('Error in /api/gemini/document-insights:', err);
+    res.status(500).json({
+      error: err?.message || 'Failed to analyze document with Gemini AI.'
+    });
   }
 });
 

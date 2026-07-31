@@ -15,13 +15,22 @@ export interface SyncResult {
  * Only transfers and merges changed records since last sync timestamp.
  */
 export async function performIncrementalSync(): Promise<SyncResult> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return {
+      success: false,
+      message: 'Offline mode: changes saved locally.',
+      mode: 'incremental'
+    };
+  }
+
   const lastSyncTs = Number(localStorage.getItem(LAST_SYNC_KEY) || 0);
   const now = Date.now();
 
   const storeKeys = [
     'projects', 'labours', 'attendance', 'advances', 'payments',
     'materials', 'hotel_advances', 'food_logs', 'gst_records',
-    'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses'
+    'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses',
+    'project_documents', 'project_phases', 'petty_cash_entries'
   ];
 
   const clientChanges: Record<string, any[]> = {};
@@ -40,14 +49,23 @@ export async function performIncrementalSync(): Promise<SyncResult> {
     }
   }
 
-  const response = await fetch('/api/db/sync/delta', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sinceTimestamp: lastSyncTs,
-      changes: clientChanges
-    })
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/db/sync/delta', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sinceTimestamp: lastSyncTs,
+        changes: clientChanges
+      })
+    });
+  } catch (netErr: any) {
+    return {
+      success: false,
+      message: 'Network offline or server unreachable. Local changes preserved.',
+      mode: 'incremental'
+    };
+  }
 
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || '';
@@ -96,10 +114,19 @@ export async function performIncrementalSync(): Promise<SyncResult> {
  * Performs full database sync backup.
  */
 export async function performFullSync(): Promise<SyncResult> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return {
+      success: false,
+      message: 'Offline mode: changes saved locally.',
+      mode: 'full'
+    };
+  }
+
   const storeKeys = [
     'projects', 'labours', 'attendance', 'advances', 'payments',
     'materials', 'hotel_advances', 'food_logs', 'gst_records',
-    'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses'
+    'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses',
+    'project_documents', 'project_phases', 'petty_cash_entries'
   ];
 
   const fullData: Record<string, any[]> = {};
@@ -107,11 +134,20 @@ export async function performFullSync(): Promise<SyncResult> {
     fullData[storeName] = await getAllItems(storeName);
   }
 
-  const response = await fetch('/api/db/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(fullData)
-  });
+  let response: Response;
+  try {
+    response = await fetch('/api/db/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fullData)
+    });
+  } catch (netErr: any) {
+    return {
+      success: false,
+      message: 'Network offline or server unreachable. Local changes preserved.',
+      mode: 'full'
+    };
+  }
 
   if (!response.ok) {
     const contentType = response.headers.get('content-type') || '';

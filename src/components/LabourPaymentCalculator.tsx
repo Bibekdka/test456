@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, getLabourDaysWorked, isLabourInProjectScope } from '../types';
+import { Project, Labour, Attendance, Advance, Payment, Payer, getLabourDaysWorked, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
   IndianRupee, 
@@ -18,7 +18,8 @@ import {
   Search, 
   SlidersHorizontal, 
   ArrowUpDown, 
-  FileText 
+  FileText,
+  Wallet
 } from 'lucide-react';
 
 interface LabourPaymentCalculatorProps {
@@ -27,6 +28,7 @@ interface LabourPaymentCalculatorProps {
   attendanceRecords: Attendance[];
   advanceRecords: Advance[];
   paymentRecords: Payment[];
+  payers?: Payer[];
   onRecordPayment: (payment: Payment) => void;
   onDeletePayment: (id: string) => void;
   onDeleteAdvance?: (id: string) => void;
@@ -38,6 +40,7 @@ export default function LabourPaymentCalculator({
   attendanceRecords,
   advanceRecords,
   paymentRecords,
+  payers = [],
   onRecordPayment,
   onDeletePayment,
   onDeleteAdvance,
@@ -53,6 +56,7 @@ export default function LabourPaymentCalculator({
   const [payAmount, setPayAmount] = useState('');
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNotes, setPayNotes] = useState('');
+  const [payPayerId, setPayPayerId] = useState('');
 
   const [expandedLabourId, setExpandedLabourId] = useState<string | null>(null);
   const [deletingLedgerItemId, setDeletingLedgerItemId] = useState<string | null>(null);
@@ -122,6 +126,8 @@ export default function LabourPaymentCalculator({
     if (!labour) return;
 
     const stats = getLabourStats(labour);
+    const selectedPayerObj = (payers || []).find(p => p.id === payPayerId);
+    const paidByName = selectedPayerObj ? selectedPayerObj.name : (payPayerId || undefined);
 
     const paymentData: Payment = {
       id: generateId('pay'),
@@ -133,11 +139,13 @@ export default function LabourPaymentCalculator({
       baseWages: stats.baseWages,
       daysWorked: stats.daysWorked,
       notes: payNotes || 'Regular wage payout',
+      paidBy: paidByName,
     };
 
     onRecordPayment(paymentData);
     setPayAmount('');
     setPayNotes('');
+    setPayPayerId('');
     alert(`Payment of ₹${amount} successfully recorded for ${labour.name}`);
   };
 
@@ -183,6 +191,7 @@ export default function LabourPaymentCalculator({
         labourName: labour ? labour.name : 'Unknown Worker',
         amount: p.amountPaid,
         notes: p.notes || 'Regular wage payout',
+        payer: p.paidBy,
         daysWorked: p.daysWorked,
         baseWages: p.baseWages,
         advanceDeducted: p.advanceDeducted,
@@ -525,7 +534,9 @@ export default function LabourPaymentCalculator({
                                           <div key={pay.id} className="flex justify-between items-center py-1 border-b border-slate-100 last:border-0 font-mono text-[11px]">
                                             <div className="flex flex-col text-left">
                                               <span className="text-slate-500">{pay.date}</span>
-                                              <span className="text-[10px] font-sans text-slate-400 truncate max-w-[120px]">{pay.notes}</span>
+                                              <span className="text-[10px] font-sans text-slate-400 truncate max-w-[140px]" title={`${pay.notes || ''}${pay.paidBy ? ` • Paid by: ${pay.paidBy}` : ''}`}>
+                                                {pay.notes}{pay.paidBy ? ` • ${pay.paidBy}` : ''}
+                                              </span>
                                             </div>
                                             <div className="flex items-center gap-1.5">
                                               <span className="font-bold text-emerald-600">₹{pay.amountPaid}</span>
@@ -621,6 +632,25 @@ export default function LabourPaymentCalculator({
                 </div>
 
                 <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                    <Wallet className="w-3.5 h-3.5 text-indigo-600" />
+                    Paid By (Who made payment)
+                  </label>
+                  <select
+                    value={payPayerId}
+                    onChange={(e) => setPayPayerId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white text-slate-700"
+                  >
+                    <option value="">Company Cash / Main Account</option>
+                    {(payers || []).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.role ? `(${p.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Payment Date (Date Stamp)</label>
                   <input
                     type="date"
@@ -631,7 +661,7 @@ export default function LabourPaymentCalculator({
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 sm:col-span-2">
                   <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Notes / Memo</label>
                   <input
                     type="text"
@@ -889,11 +919,7 @@ export default function LabourPaymentCalculator({
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">
-                          {item.type === 'payout' ? (
-                            <span className="text-xs text-slate-400">Site Supervisor (Main)</span>
-                          ) : (
-                            <span className="text-xs font-semibold">{item.payer || 'Not logged'}</span>
-                          )}
+                          <span className="text-xs font-semibold text-slate-800">{item.payer || 'Company Cash'}</span>
                         </td>
                         <td className="py-3.5 px-4 max-w-[240px] truncate text-xs text-slate-500" title={item.notes}>
                           {item.notes}

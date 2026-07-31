@@ -248,10 +248,12 @@ export default function AttendanceCalendar({
     let validDaysInMonth = 0;
 
     const joinDate = selectedLabour.joinedDate || activeProject.startDate || '1970-01-01';
+    const leftDate = selectedLabour.status === 'left' && selectedLabour.leftDate ? selectedLabour.leftDate : null;
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateStr(day);
       if (dateStr < joinDate) continue; // Ignore days before worker joined
+      if (leftDate && dateStr > leftDate) continue; // Ignore days after worker left
 
       validDaysInMonth++;
       const rec = getAttendanceRecord(selectedLabour.id, dateStr);
