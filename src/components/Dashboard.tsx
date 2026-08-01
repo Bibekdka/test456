@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import PayerManager from './PayerManager';
 import { 
   Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, 
-  Advance, Payment, HotelAdvance, Payer,
+  Advance, Payment, HotelAdvance, Payer, PartnerDeal,
   getAttendanceFoodDaysAndCost, getProjectScopeIds
 } from '../types';
 import { generateId } from '../utils/id';
@@ -12,7 +12,7 @@ import {
   BarChart3, CheckCircle2, AlertTriangle, PlayCircle, Search, X, RotateCcw, MapPin,
   SlidersHorizontal, Info, UserCheck, Wallet, CreditCard, Coins, Building2,
   PieChart as PieChartIcon, LayoutGrid, ListFilter, ArrowUpRight, ChevronDown, ChevronUp,
-  Receipt, Landmark
+  Receipt, Landmark, Phone, Handshake
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,6 +40,7 @@ interface DashboardProps {
   paymentRecords?: Payment[];
   hotelAdvances?: HotelAdvance[];
   payers?: Payer[];
+  partnerDeals?: PartnerDeal[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
   onAddProject: (project: Project) => void;
@@ -114,6 +115,7 @@ export default function Dashboard({
   paymentRecords = [],
   hotelAdvances = [],
   payers = [],
+  partnerDeals = [],
   activeProjectId,
   onSelectProject,
   onAddProject,
@@ -336,17 +338,21 @@ export default function Dashboard({
       key: string;
       name: string;
       role?: string;
+      phone?: string;
       totalInvested: number;
       advancesTotal: number;
       paymentsTotal: number;
       expensesTotal: number;
       hotelTotal: number;
       materialsTotal: number;
+      partnerHelpTotal: number;
+      partnerDealsLent: number;
+      partnerDealsBorrowed: number;
       projectAmounts: Map<string, number>;
       transactionCount: number;
     }>();
 
-    const getOrCreatePayer = (payerKey: string, defaultName?: string) => {
+    const getOrCreatePayer = (payerKey: string, defaultName?: string, phoneOverride?: string) => {
       const rawKey = payerKey.trim();
       if (!rawKey) return null;
 
@@ -374,35 +380,45 @@ export default function Dashboard({
 
       if (!map.has(resolvedKey)) {
         const role = registered ? registered.role : undefined;
+        const phone = registered?.phone || phoneOverride;
         map.set(resolvedKey, {
           key: resolvedKey,
           name: displayName,
           role,
+          phone,
           totalInvested: 0,
           advancesTotal: 0,
           paymentsTotal: 0,
           expensesTotal: 0,
           hotelTotal: 0,
           materialsTotal: 0,
+          partnerHelpTotal: 0,
+          partnerDealsLent: 0,
+          partnerDealsBorrowed: 0,
           projectAmounts: new Map<string, number>(),
           transactionCount: 0
         });
       }
-      return map.get(resolvedKey)!;
+      const existing = map.get(resolvedKey)!;
+      if (!existing.phone && (registered?.phone || phoneOverride)) {
+        existing.phone = registered?.phone || phoneOverride;
+      }
+      return existing;
     };
 
     // Registered Payers
     (payers || []).forEach(p => {
-      getOrCreatePayer(p.id, p.name);
+      getOrCreatePayer(p.id, p.name, p.phone);
     });
 
     // Advances
     (advanceRecords || []).forEach(adv => {
       if (adv.paidBy) {
-        const p = getOrCreatePayer(adv.paidBy);
+        const p = getOrCreatePayer(adv.paidBy, undefined, adv.partnerPhone);
         if (p) {
           p.totalInvested += adv.amount;
           p.advancesTotal += adv.amount;
+          if (adv.isPartnerHelp) p.partnerHelpTotal += adv.amount;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(adv.projectId) || 0;
           p.projectAmounts.set(adv.projectId, curr + adv.amount);
@@ -428,10 +444,11 @@ export default function Dashboard({
     // Daily Expenses
     (dailyExpenses || []).forEach(exp => {
       if (exp.payerId) {
-        const p = getOrCreatePayer(exp.payerId);
+        const p = getOrCreatePayer(exp.payerId, undefined, exp.partnerPhone);
         if (p) {
           p.totalInvested += exp.amount;
           p.expensesTotal += exp.amount;
+          if (exp.isPartnerHelp) p.partnerHelpTotal += exp.amount;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(exp.projectId) || 0;
           p.projectAmounts.set(exp.projectId, curr + exp.amount);
@@ -443,10 +460,11 @@ export default function Dashboard({
     (hotelAdvances || []).forEach(ha => {
       const paidBy = (ha as any).paidBy;
       if (paidBy) {
-        const p = getOrCreatePayer(paidBy);
+        const p = getOrCreatePayer(paidBy, undefined, ha.partnerPhone);
         if (p) {
           p.totalInvested += ha.amount;
           p.hotelTotal += ha.amount;
+          if (ha.isPartnerHelp) p.partnerHelpTotal += ha.amount;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(ha.projectId) || 0;
           p.projectAmounts.set(ha.projectId, curr + ha.amount);
@@ -458,10 +476,11 @@ export default function Dashboard({
     (materials || []).forEach(m => {
       const paidBy = (m as any).paidBy;
       if (paidBy) {
-        const p = getOrCreatePayer(paidBy);
+        const p = getOrCreatePayer(paidBy, undefined, m.partnerPhone);
         if (p) {
           p.totalInvested += m.cost;
           p.materialsTotal += m.cost;
+          if (m.isPartnerHelp) p.partnerHelpTotal += m.cost;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(m.projectId) || 0;
           p.projectAmounts.set(m.projectId, curr + m.cost);
@@ -469,10 +488,26 @@ export default function Dashboard({
       }
     });
 
+    // Partner Deals
+    (partnerDeals || []).forEach(deal => {
+      if (deal.lenderPayerId) {
+        const lender = getOrCreatePayer(deal.lenderPayerId, undefined, deal.lenderPhone);
+        if (lender) {
+          lender.partnerDealsLent += deal.amount;
+        }
+      }
+      if (deal.borrowerPayerId) {
+        const borrower = getOrCreatePayer(deal.borrowerPayerId, undefined, deal.borrowerPhone);
+        if (borrower) {
+          borrower.partnerDealsBorrowed += deal.amount;
+        }
+      }
+    });
+
     return Array.from(map.values())
       .filter(p => p.totalInvested > 0 || (payers || []).some(rp => rp.id === p.key))
       .sort((a, b) => b.totalInvested - a.totalInvested);
-  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials]);
+  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials, partnerDeals]);
 
   const totalInvestedByPayers = useMemo(() => {
     return payerContributions.reduce((sum, p) => sum + p.totalInvested, 0);
@@ -920,7 +955,7 @@ export default function Dashboard({
                   <div className="space-y-1">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <h4 className="font-bold text-slate-800 text-sm">{payer.name}</h4>
                           {payer.role && (
                             <span className="text-[9px] bg-slate-200/70 text-slate-600 font-semibold px-1.5 py-0.5 rounded">
@@ -928,9 +963,24 @@ export default function Dashboard({
                             </span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5">
-                          {payer.transactionCount} transaction{payer.transactionCount === 1 ? '' : 's'} recorded
-                        </p>
+
+                        {/* Phone Number Display & Action */}
+                        {payer.phone ? (
+                          <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-indigo-700 mt-0.5">
+                            <Phone className="w-3 h-3 text-indigo-500 shrink-0" />
+                            <a 
+                              href={`tel:${payer.phone}`} 
+                              className="hover:underline flex items-center gap-1"
+                              title="Click to call partner"
+                            >
+                              <span>{payer.phone}</span>
+                            </a>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {payer.transactionCount} transaction{payer.transactionCount === 1 ? '' : 's'} recorded
+                          </p>
+                        )}
                       </div>
 
                       <div className="text-right shrink-0">
@@ -940,6 +990,28 @@ export default function Dashboard({
                         </span>
                       </div>
                     </div>
+
+                    {/* Partner Financial Help Badge if present */}
+                    {(payer.partnerHelpTotal > 0 || payer.partnerDealsLent > 0 || payer.partnerDealsBorrowed > 0) && (
+                      <div className="pt-1 flex flex-wrap gap-1">
+                        {payer.partnerHelpTotal > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded font-mono">
+                            <Handshake className="w-2.5 h-2.5 text-amber-700 shrink-0" />
+                            <span>Partner Help: ₹{payer.partnerHelpTotal.toLocaleString()}</span>
+                          </span>
+                        )}
+                        {payer.partnerDealsLent > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-200 px-1.5 py-0.5 rounded font-mono">
+                            <span>Lent Deals: ₹{payer.partnerDealsLent.toLocaleString()}</span>
+                          </span>
+                        )}
+                        {payer.partnerDealsBorrowed > 0 && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-rose-100 text-rose-900 border border-rose-200 px-1.5 py-0.5 rounded font-mono">
+                            <span>Help Received: ₹{payer.partnerDealsBorrowed.toLocaleString()}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Progress Share Bar */}
                     <div className="space-y-1 pt-1">

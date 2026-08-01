@@ -211,19 +211,23 @@ export default function PartnerFinanceManager({
 
   // Pairwise Debt Matrix ("Who Owes Whom")
   const pairwiseNetBalances = useMemo(() => {
-    const pairMap: Record<string, { borrowerId: string; borrowerName: string; lenderId: string; lenderName: string; totalLent: number; totalSettled: number; netOwed: number; activeDealsCount: number }> = {};
+    const pairMap: Record<string, { borrowerId: string; borrowerName: string; borrowerPhone?: string; lenderId: string; lenderName: string; lenderPhone?: string; totalLent: number; totalSettled: number; netOwed: number; activeDealsCount: number }> = {};
 
     dealsWithMetrics.forEach(d => {
       const lenderName = getPayerName(d.lenderPayerId);
       const borrowerName = getPayerName(d.borrowerPayerId);
+      const lenderPayer = payers.find(p => p.id === d.lenderPayerId || p.name === d.lenderPayerId);
+      const borrowerPayer = payers.find(p => p.id === d.borrowerPayerId || p.name === d.borrowerPayerId);
       const key = `${d.borrowerPayerId}_owes_${d.lenderPayerId}`;
 
       if (!pairMap[key]) {
         pairMap[key] = {
           borrowerId: d.borrowerPayerId,
           borrowerName,
+          borrowerPhone: borrowerPayer?.phone || d.borrowerPhone,
           lenderId: d.lenderPayerId,
           lenderName,
+          lenderPhone: lenderPayer?.phone || d.lenderPhone,
           totalLent: 0,
           totalSettled: 0,
           netOwed: 0,
@@ -328,11 +332,16 @@ export default function PartnerFinanceManager({
       return;
     }
 
+    const lenderObj = payers.find(p => p.id === dealLenderId || p.name === dealLenderId);
+    const borrowerObj = payers.find(p => p.id === dealBorrowerId || p.name === dealBorrowerId);
+
     const newDeal: PartnerDeal = {
       id: 'deal_' + Date.now(),
       projectId: dealProjectId === 'all' ? undefined : dealProjectId,
       lenderPayerId: dealLenderId,
       borrowerPayerId: dealBorrowerId,
+      lenderPhone: lenderObj?.phone,
+      borrowerPhone: borrowerObj?.phone,
       amount: amt,
       date: dealDate,
       purpose: dealPurpose.trim(),

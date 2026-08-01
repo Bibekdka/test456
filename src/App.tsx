@@ -1700,6 +1700,7 @@ export default function App() {
               paymentRecords={paymentRecords}
               hotelAdvances={hotelAdvances}
               payers={payers}
+              partnerDeals={partnerDeals}
               activeProjectId={activeProjectId}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}

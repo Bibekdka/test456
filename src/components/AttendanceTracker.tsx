@@ -67,6 +67,8 @@ export default function AttendanceTracker({
   const [advDate, setAdvDate] = useState(new Date().toISOString().split('T')[0]);
   const [advDesc, setAdvDesc] = useState('');
   const [advPaidBy, setAdvPaidBy] = useState('');
+  const [advIsPartnerHelp, setAdvIsPartnerHelp] = useState(false);
+  const [advPartnerPhone, setAdvPartnerPhone] = useState('');
 
   // Payer form state
   const [payerName, setPayerName] = useState('');
@@ -315,6 +317,17 @@ export default function AttendanceTracker({
     e.preventDefault();
     if (!advLabourId || !advAmount) return;
 
+    // Sync phone number to Payer if selected
+    if (advPaidBy && advPartnerPhone.trim()) {
+      const payerObj = payers.find(p => p.id === advPaidBy || p.name === advPaidBy);
+      if (payerObj && (!payerObj.phone || payerObj.phone !== advPartnerPhone.trim())) {
+        onUpdatePayer?.({
+          ...payerObj,
+          phone: advPartnerPhone.trim()
+        });
+      }
+    }
+
     onAddAdvance({
       id: generateId('adv'),
       labourId: advLabourId,
@@ -323,12 +336,16 @@ export default function AttendanceTracker({
       date: advDate,
       description: advDesc || 'Advance payment',
       paidBy: advPaidBy || '',
+      isPartnerHelp: advIsPartnerHelp,
+      partnerPhone: advPartnerPhone.trim() || undefined,
     });
 
     setAdvLabourId('');
     setAdvAmount('');
     setAdvDesc('');
     setAdvPaidBy('');
+    setAdvIsPartnerHelp(false);
+    setAdvPartnerPhone('');
     setShowAdvanceForm(false);
     alert('Standalone advance logged successfully!');
   };
@@ -1134,17 +1151,40 @@ export default function AttendanceTracker({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Paid By</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Paid By & Partner Help</label>
                 <select
                   value={advPaidBy}
-                  onChange={(e) => setAdvPaidBy(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAdvPaidBy(val);
+                    const pObj = payers.find(p => p.id === val || p.name === val);
+                    if (pObj?.phone) setAdvPartnerPhone(pObj.phone);
+                  }}
                   className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1.5 text-xs focus:outline-none"
                 >
                   <option value="">Select Payer</option>
                   {payers.map(p => (
-                    <option key={p.id} value={p.name}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                    <option key={p.id} value={p.name}>{p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}</option>
                   ))}
                 </select>
+                <div className="pt-1 flex flex-col gap-1">
+                  <label className="inline-flex items-center gap-1.5 text-[11px] text-amber-800 font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={advIsPartnerHelp}
+                      onChange={(e) => setAdvIsPartnerHelp(e.target.checked)}
+                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Partner Help / Support</span>
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    value={advPartnerPhone}
+                    onChange={(e) => setAdvPartnerPhone(e.target.value)}
+                    className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1 text-xs focus:outline-none font-mono"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1 flex items-end">

@@ -29,6 +29,7 @@ interface DailyExpensesTrackerProps {
   onAddDailyExpense: (exp: DailyExpense) => void;
   onUpdateDailyExpense: (exp: DailyExpense) => void;
   onDeleteDailyExpense: (id: string) => void;
+  onUpdatePayer?: (payer: Payer) => void;
 }
 
 const SUB_CATEGORIES = {
@@ -59,7 +60,8 @@ export default function DailyExpensesTracker({
   dailyExpenses,
   onAddDailyExpense,
   onUpdateDailyExpense,
-  onDeleteDailyExpense
+  onDeleteDailyExpense,
+  onUpdatePayer
 }: DailyExpensesTrackerProps) {
   // Form states
   const [showForm, setShowForm] = useState(false);
@@ -72,6 +74,8 @@ export default function DailyExpensesTracker({
   const [description, setDescription] = useState('');
   const [selectedLabourId, setSelectedLabourId] = useState('');
   const [selectedPayerId, setSelectedPayerId] = useState('');
+  const [isPartnerHelp, setIsPartnerHelp] = useState(false);
+  const [partnerPhone, setPartnerPhone] = useState('');
   const [receiptImage, setReceiptImage] = useState<string | undefined>(undefined);
   const [receiptImageName, setReceiptImageName] = useState<string | undefined>(undefined);
 
@@ -186,6 +190,9 @@ export default function DailyExpensesTracker({
     setDescription(exp.description);
     setSelectedLabourId(exp.labourId || '');
     setSelectedPayerId(exp.payerId || '');
+    setIsPartnerHelp(!!exp.isPartnerHelp);
+    const existingPayer = payers.find(p => p.id === exp.payerId || p.name === exp.payerId);
+    setPartnerPhone(exp.partnerPhone || existingPayer?.phone || '');
     setReceiptImage(exp.receiptImage);
     setReceiptImageName(exp.receiptImageName);
     setShowForm(true);
@@ -202,6 +209,8 @@ export default function DailyExpensesTracker({
     setDescription('');
     setSelectedLabourId('');
     setSelectedPayerId('');
+    setIsPartnerHelp(false);
+    setPartnerPhone('');
     clearReceipt();
     setShowForm(false);
   };
@@ -220,6 +229,17 @@ export default function DailyExpensesTracker({
       return;
     }
 
+    // Sync phone number to Payer if selected
+    if (selectedPayerId && partnerPhone.trim()) {
+      const payerObj = payers.find(p => p.id === selectedPayerId || p.name === selectedPayerId);
+      if (payerObj && (!payerObj.phone || payerObj.phone !== partnerPhone.trim())) {
+        onUpdatePayer?.({
+          ...payerObj,
+          phone: partnerPhone.trim()
+        });
+      }
+    }
+
     const expData: DailyExpense = {
       id: editingExpense?.id || generateId('exp'),
       projectId: activeProject.id,
@@ -230,6 +250,8 @@ export default function DailyExpensesTracker({
       description: description.trim(),
       labourId: category === 'labour_expense' && selectedLabourId ? selectedLabourId : undefined,
       payerId: selectedPayerId || undefined,
+      isPartnerHelp,
+      partnerPhone: partnerPhone.trim() || undefined,
       receiptImage,
       receiptImageName
     };
@@ -529,22 +551,51 @@ export default function DailyExpensesTracker({
                 </select>
               </div>
 
-              {/* Payer/Paying Officer */}
+              {/* Payer/Paying Officer & Partner Help */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Disbursed/Paid By (Payer) *</label>
                 <select
                   required
                   value={selectedPayerId}
-                  onChange={(e) => setSelectedPayerId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold"
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setSelectedPayerId(id);
+                    const foundPayer = payers.find(p => p.id === id || p.name === id);
+                    if (foundPayer?.phone) {
+                      setPartnerPhone(foundPayer.phone);
+                    }
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold"
                 >
                   <option value="">-- Choose Payer --</option>
                   {payers.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} {p.role ? `(${p.role})` : ''}
+                      {p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}
                     </option>
                   ))}
                 </select>
+
+                <div className="pt-1 flex flex-col gap-1.5">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-amber-800 font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPartnerHelp}
+                      onChange={(e) => setIsPartnerHelp(e.target.checked)}
+                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>🤝 Partner Help / Financial Support</span>
+                  </label>
+
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      placeholder="Partner / Payer Phone Number"
+                      value={partnerPhone}
+                      onChange={(e) => setPartnerPhone(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

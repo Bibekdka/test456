@@ -147,6 +147,8 @@ export interface Advance extends BaseEntity {
   date: string; // YYYY-MM-DD
   description?: string;
   paidBy?: string; // ID or Name of Payer who made the payment
+  isPartnerHelp?: boolean;
+  partnerPhone?: string;
 }
 
 export interface Payer extends BaseEntity {
@@ -167,6 +169,8 @@ export interface PartnerDeal extends BaseEntity {
   purpose: string; // Purpose / reason for financial support (e.g. "Site material shortfall support")
   status: 'pending' | 'partially_settled' | 'settled';
   notes?: string;
+  lenderPhone?: string;
+  borrowerPhone?: string;
   receiptImage?: string; // Base64 data URI of transfer receipt / UPI proof
   receiptImageName?: string;
 }
@@ -212,6 +216,8 @@ export interface Material extends BaseEntity {
   dateBought: string; // YYYY-MM-DD
   supplier?: string;
   paidBy?: string; // ID or Name of Payer who made the material payment
+  isPartnerHelp?: boolean;
+  partnerPhone?: string;
   billImage?: string; // Base64 data URI of the uploaded image
   billImageName?: string;
   usages: MaterialUsage[];
@@ -248,6 +254,8 @@ export interface HotelAdvance extends BaseEntity {
   amount: number;
   hotelName: string;
   paidBy?: string; // ID or Name of Payer who made the hotel/mess payment
+  isPartnerHelp?: boolean;
+  partnerPhone?: string;
   notes?: string;
 }
 
@@ -273,6 +281,8 @@ export interface GstRecord extends BaseEntity {
   gstAmount: number; // GST amount
   type: 'paid' | 'claimed'; // 'paid' (Paid on Purchase/Input Tax) or 'claimed' (Collected/Claimed on Sales/Output Tax)
   paidBy?: string; // ID or Name of Payer who made the payment
+  isPartnerHelp?: boolean;
+  partnerPhone?: string;
   notes?: string;
 }
 
@@ -286,6 +296,8 @@ export interface DailyExpense extends BaseEntity {
   description: string;
   labourId?: string; // Reference to a specific labourer if category is 'labour_expense'
   payerId?: string; // Reference to Payer ID or Name who distributed/paid this
+  isPartnerHelp?: boolean;
+  partnerPhone?: string;
   receiptImage?: string; // Base64 data URI of receipt
   receiptImageName?: string;
 }
