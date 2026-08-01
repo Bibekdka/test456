@@ -15,7 +15,7 @@ import {
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { Payer, Project, Advance, Payment, DailyExpense, HotelAdvance, Material, GstRecord, PettyCashEntry } from '../types';
+import { Payer, Project, Advance, Payment, DailyExpense, HotelAdvance, Material, GstRecord, PettyCashEntry, PartnerDeal, Labour } from '../types';
 import { generateId } from '../utils/id';
 import { 
   Users, 
@@ -67,6 +67,8 @@ interface PayerManagerProps {
   materials: Material[];
   gstRecords: GstRecord[];
   pettyCashEntries?: PettyCashEntry[];
+  partnerDeals?: PartnerDeal[];
+  labours?: Labour[];
   activeProjectId: string | null;
   onAddPayer: (payer: Payer) => Promise<void>;
   onUpdatePayer: (payer: Payer) => Promise<void>;
@@ -83,6 +85,8 @@ export default function PayerManager({
   materials,
   gstRecords,
   pettyCashEntries = [],
+  partnerDeals = [],
+  labours = [],
   activeProjectId,
   onAddPayer,
   onUpdatePayer,
@@ -124,12 +128,14 @@ export default function PayerManager({
       materialsTotal: number;
       gstTotal: number;
       pettyCashTotal: number;
+      partnerDealsLent: number;
+      partnerDealsBorrowed: number;
       transactionCount: number;
       projectAmounts: Map<string, number>;
       transactions: Array<{
         id: string;
         date: string;
-        category: 'Labour Advance' | 'Wage Settlement' | 'Daily Expense' | 'Hotel Food' | 'Material Stock' | 'GST Tax' | 'Petty Cash Top-Up';
+        category: 'Labour Advance' | 'Wage Settlement' | 'Daily Expense' | 'Hotel Food' | 'Material Stock' | 'GST Tax' | 'Petty Cash Top-Up' | 'Partner Support / Deal';
         projectId: string;
         projectName: string;
         description: string;
@@ -138,24 +144,34 @@ export default function PayerManager({
     }>();
 
     const getOrCreateEntry = (payerRef: string, defaultName?: string) => {
-      const rawRef = payerRef.trim();
+      const rawRef = (payerRef || '').trim();
       if (!rawRef) return null;
 
-      // Find registered payer profile
-      const registered = payers.find(p => 
-        p.id === rawRef || 
-        p.id.toLowerCase() === rawRef.toLowerCase() || 
-        p.name.trim().toLowerCase() === rawRef.toLowerCase()
-      );
+      const cleanedRef = rawRef.replace(/\s*\([^)]*\)/g, '').trim();
+      const targetLower = cleanedRef.toLowerCase();
 
-      const canonicalId = registered ? registered.id : rawRef.toLowerCase();
-      const displayName = registered ? registered.name : (defaultName || rawRef);
-      const targetLowerName = displayName.trim().toLowerCase();
+      // Find registered payer profile or labour member
+      const registered = payers.find(p => {
+        const pIdLower = p.id.toLowerCase();
+        const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+        return p.id === rawRef || pIdLower === targetLower || pNameClean === targetLower;
+      });
+
+      const labourMember = !registered ? (labours || []).find(l => {
+        const lIdLower = l.id.toLowerCase();
+        const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+        return l.id === rawRef || lIdLower === targetLower || lNameClean === targetLower;
+      }) : undefined;
+
+      const canonicalId = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
+      const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || cleanedRef || rawRef));
+      const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
 
       let resolvedKey = canonicalId;
       if (!map.has(canonicalId)) {
         for (const [k, v] of map.entries()) {
-          if (v.name.trim().toLowerCase() === targetLowerName) {
+          const vNameClean = v.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          if (vNameClean === targetLowerName || (targetLowerName.length > 3 && vNameClean.includes(targetLowerName)) || (vNameClean.length > 3 && targetLowerName.includes(vNameClean))) {
             resolvedKey = k;
             break;
           }
@@ -167,8 +183,8 @@ export default function PayerManager({
           payerObj: registered,
           id: registered ? registered.id : resolvedKey,
           name: displayName,
-          role: registered?.role,
-          phone: registered?.phone,
+          role: registered?.role || (labourMember ? `Labour: ${labourMember.role || labourMember.category || 'Member'}` : undefined),
+          phone: registered?.phone || labourMember?.contact || labourMember?.phone,
           notes: (registered as any)?.notes,
           totalDisbursed: 0,
           advancesTotal: 0,
@@ -178,6 +194,8 @@ export default function PayerManager({
           materialsTotal: 0,
           gstTotal: 0,
           pettyCashTotal: 0,
+          partnerDealsLent: 0,
+          partnerDealsBorrowed: 0,
           transactionCount: 0,
           projectAmounts: new Map<string, number>(),
           transactions: []
@@ -354,11 +372,12 @@ export default function PayerManager({
       if (pc.type === 'top_up' && pc.payerId) {
         const entry = getOrCreateEntry(pc.payerId);
         if (entry) {
-          entry.totalDisbursed += pc.amount;
-          entry.pettyCashTotal += pc.amount;
+          const pcAmt = Number(pc.amount) || 0;
+          entry.totalDisbursed += pcAmt;
+          entry.pettyCashTotal += pcAmt;
           entry.transactionCount += 1;
           const curr = entry.projectAmounts.get(pc.projectId) || 0;
-          entry.projectAmounts.set(pc.projectId, curr + pc.amount);
+          entry.projectAmounts.set(pc.projectId, curr + pcAmt);
 
           entry.transactions.push({
             id: pc.id,
@@ -367,8 +386,40 @@ export default function PayerManager({
             projectId: pc.projectId,
             projectName: getProjectName(pc.projectId),
             description: `Top-up for Supervisor ${pc.supervisorName} (${pc.description})`,
-            amount: pc.amount
+            amount: pcAmt
           });
+        }
+      }
+    });
+
+    // 8. Inter-Partner Financial Deals (Lent / Invested)
+    (partnerDeals || []).forEach(deal => {
+      if (deal.lenderPayerId) {
+        const entry = getOrCreateEntry(deal.lenderPayerId, undefined);
+        if (entry) {
+          const actualAmount = Number(deal.amount) || 0;
+          entry.totalDisbursed += actualAmount;
+          entry.partnerDealsLent += actualAmount;
+          entry.transactionCount += 1;
+          const pId = deal.projectId || 'all';
+          const curr = entry.projectAmounts.get(pId) || 0;
+          entry.projectAmounts.set(pId, curr + actualAmount);
+
+          entry.transactions.push({
+            id: deal.id,
+            date: deal.date,
+            category: 'Partner Support / Deal',
+            projectId: pId,
+            projectName: deal.projectId && deal.projectId !== 'all' ? getProjectName(deal.projectId) : 'Inter-Partner Support',
+            description: `Partner Support: ${deal.purpose || 'Financial assistance'} (To: ${deal.borrowerPayerId})`,
+            amount: actualAmount
+          });
+        }
+      }
+      if (deal.borrowerPayerId) {
+        const borrowerEntry = getOrCreateEntry(deal.borrowerPayerId, undefined);
+        if (borrowerEntry) {
+          borrowerEntry.partnerDealsBorrowed += Number(deal.amount) || 0;
         }
       }
     });
@@ -379,7 +430,7 @@ export default function PayerManager({
     });
 
     return Array.from(map.values()).sort((a, b) => b.totalDisbursed - a.totalDisbursed);
-  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials, gstRecords, pettyCashEntries, projects]);
+  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials, gstRecords, pettyCashEntries, partnerDeals, labours, projects]);
 
   // Overall Statistics
   const totalOutlayAcrossAll = useMemo(() => {

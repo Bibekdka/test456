@@ -1701,6 +1701,7 @@ export default function App() {
               hotelAdvances={hotelAdvances}
               payers={payers}
               partnerDeals={partnerDeals}
+              pettyCashEntries={pettyCashEntries}
               activeProjectId={activeProjectId}
               onSelectProject={setActiveProjectId}
               onAddProject={handleAddProject}
@@ -1955,6 +1956,8 @@ export default function App() {
               materials={materials}
               gstRecords={gstRecords}
               pettyCashEntries={pettyCashEntries}
+              partnerDeals={partnerDeals}
+              labours={labours}
               activeProjectId={activeProjectId}
               onAddPayer={handleAddPayer}
               onUpdatePayer={handleUpdatePayer}

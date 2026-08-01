@@ -1344,28 +1344,28 @@ export default function FoodTracker({
               {/* Paid By */}
               <div>
                 <label htmlFor="hotel-adv-paid-by" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Paid By (Payer / Cash Disburser)</label>
-                {payers && payers.length > 0 ? (
-                  <select
-                    id="hotel-adv-paid-by"
-                    value={advancePaidBy}
-                    onChange={(e) => setAdvancePaidBy(e.target.value)}
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                  >
-                    <option value="">-- Select Disburser / Payer --</option>
-                    {payers.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    id="hotel-adv-paid-by"
-                    value={advancePaidBy}
-                    onChange={(e) => setAdvancePaidBy(e.target.value)}
-                    placeholder="e.g. Ramesh Kumar / Site Fund"
-                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
-                  />
-                )}
+                <select
+                  id="hotel-adv-paid-by"
+                  value={advancePaidBy}
+                  onChange={(e) => setAdvancePaidBy(e.target.value)}
+                  className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                >
+                  <option value="">-- Select Disburser / Payer --</option>
+                  {payers && payers.length > 0 && (
+                    <optgroup label="Registered Payers / Partners">
+                      {payers.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {labours && labours.length > 0 && (
+                    <optgroup label="Project Members / Labour Registry">
+                      {labours.map(l => (
+                        <option key={l.id} value={l.name}>{l.name} ({l.role || l.category || 'Member'})</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
               </div>
 
               {/* Notes */}

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import PayerManager from './PayerManager';
 import { 
   Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, 
-  Advance, Payment, HotelAdvance, Payer, PartnerDeal,
+  Advance, Payment, HotelAdvance, Payer, PartnerDeal, PettyCashEntry,
   getAttendanceFoodDaysAndCost, getProjectScopeIds
 } from '../types';
 import { generateId } from '../utils/id';
@@ -41,6 +41,7 @@ interface DashboardProps {
   hotelAdvances?: HotelAdvance[];
   payers?: Payer[];
   partnerDeals?: PartnerDeal[];
+  pettyCashEntries?: PettyCashEntry[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
   onAddProject: (project: Project) => void;
@@ -116,6 +117,7 @@ export default function Dashboard({
   hotelAdvances = [],
   payers = [],
   partnerDeals = [],
+  pettyCashEntries = [],
   activeProjectId,
   onSelectProject,
   onAddProject,
@@ -353,31 +355,35 @@ export default function Dashboard({
     }>();
 
     const getOrCreatePayer = (payerKey: string, defaultName?: string, phoneOverride?: string) => {
-      const rawKey = payerKey.trim();
+      const rawKey = (payerKey || '').trim();
       if (!rawKey) return null;
 
+      const cleanedKey = rawKey.replace(/\s*\([^)]*\)/g, '').trim();
+      const targetLower = cleanedKey.toLowerCase();
+
       // Find registered payer or labour registry member by ID or case-insensitive name
-      const registered = (payers || []).find(p => 
-        p.id === rawKey || 
-        p.id.toLowerCase() === rawKey.toLowerCase() ||
-        p.name.trim().toLowerCase() === rawKey.toLowerCase()
-      );
+      const registered = (payers || []).find(p => {
+        const pIdLower = p.id.toLowerCase();
+        const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+        return p.id === rawKey || pIdLower === targetLower || pNameClean === targetLower;
+      });
 
-      const labourMember = !registered ? (labours || []).find(l => 
-        l.id === rawKey || 
-        l.id.toLowerCase() === rawKey.toLowerCase() ||
-        l.name.trim().toLowerCase() === rawKey.toLowerCase()
-      ) : undefined;
+      const labourMember = !registered ? (labours || []).find(l => {
+        const lIdLower = l.id.toLowerCase();
+        const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+        return l.id === rawKey || lIdLower === targetLower || lNameClean === targetLower;
+      }) : undefined;
 
-      const canonicalKey = registered ? registered.id : (labourMember ? labourMember.id : rawKey.toLowerCase());
-      const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || rawKey));
-      const targetLowerName = displayName.trim().toLowerCase();
+      const canonicalKey = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
+      const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || cleanedKey || rawKey));
+      const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
 
       // Check if map already has this canonical key OR if any existing entry shares the same name
       let resolvedKey = canonicalKey;
       if (!map.has(canonicalKey)) {
         for (const [k, v] of map.entries()) {
-          if (v.name.trim().toLowerCase() === targetLowerName) {
+          const vNameClean = v.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          if (vNameClean === targetLowerName || (targetLowerName.length > 3 && vNameClean.includes(targetLowerName)) || (vNameClean.length > 3 && targetLowerName.includes(vNameClean))) {
             resolvedKey = k;
             break;
           }
@@ -422,7 +428,7 @@ export default function Dashboard({
       if (adv.paidBy) {
         const p = getOrCreatePayer(adv.paidBy, undefined, adv.partnerPhone);
         if (p) {
-          const advContrib = adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount;
+          const advContrib = Number(adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount) || 0;
           p.totalInvested += advContrib;
           p.advancesTotal += advContrib;
           if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
@@ -439,11 +445,12 @@ export default function Dashboard({
       if (paidBy) {
         const p = getOrCreatePayer(paidBy);
         if (p) {
-          p.totalInvested += pay.amountPaid;
-          p.paymentsTotal += pay.amountPaid;
+          const payContrib = Number(pay.amountPaid) || 0;
+          p.totalInvested += payContrib;
+          p.paymentsTotal += payContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(pay.projectId) || 0;
-          p.projectAmounts.set(pay.projectId, curr + pay.amountPaid);
+          p.projectAmounts.set(pay.projectId, curr + payContrib);
         }
       }
     });
@@ -453,7 +460,7 @@ export default function Dashboard({
       if (exp.payerId) {
         const p = getOrCreatePayer(exp.payerId, undefined, exp.partnerPhone);
         if (p) {
-          const expContrib = exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount;
+          const expContrib = Number(exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount) || 0;
           p.totalInvested += expContrib;
           p.expensesTotal += expContrib;
           if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
@@ -470,7 +477,7 @@ export default function Dashboard({
       if (paidBy) {
         const p = getOrCreatePayer(paidBy, undefined, ha.partnerPhone);
         if (p) {
-          const haContrib = ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount;
+          const haContrib = Number(ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount) || 0;
           p.totalInvested += haContrib;
           p.hotelTotal += haContrib;
           if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
@@ -487,7 +494,7 @@ export default function Dashboard({
       if (paidBy) {
         const p = getOrCreatePayer(paidBy, undefined, m.partnerPhone);
         if (p) {
-          const mContrib = m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost;
+          const mContrib = Number(m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost) || 0;
           p.totalInvested += mContrib;
           p.materialsTotal += mContrib;
           if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
@@ -498,18 +505,54 @@ export default function Dashboard({
       }
     });
 
+    // GST Tax Paid
+    (gstRecords || []).forEach(g => {
+      const paidBy = (g as any).paidBy;
+      if (paidBy && g.type === 'paid') {
+        const p = getOrCreatePayer(paidBy, undefined, g.partnerPhone);
+        if (p) {
+          const totalPaid = (Number(g.amount) || 0) + (Number(g.gstAmount) || 0);
+          p.totalInvested += totalPaid;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(g.projectId) || 0;
+          p.projectAmounts.set(g.projectId, curr + totalPaid);
+        }
+      }
+    });
+
+    // Petty Cash Top-Ups
+    (pettyCashEntries || []).forEach(pc => {
+      if (pc.type === 'top_up' && pc.payerId) {
+        const p = getOrCreatePayer(pc.payerId);
+        if (p) {
+          const pcAmt = Number(pc.amount) || 0;
+          p.totalInvested += pcAmt;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(pc.projectId) || 0;
+          p.projectAmounts.set(pc.projectId, curr + pcAmt);
+        }
+      }
+    });
+
     // Partner Deals
     (partnerDeals || []).forEach(deal => {
       if (deal.lenderPayerId) {
         const lender = getOrCreatePayer(deal.lenderPayerId, undefined, deal.lenderPhone);
         if (lender) {
-          lender.partnerDealsLent += deal.amount;
+          const dealAmt = Number(deal.amount) || 0;
+          lender.totalInvested += dealAmt;
+          lender.partnerDealsLent += dealAmt;
+          lender.transactionCount += 1;
+          const pId = deal.projectId || 'all';
+          const curr = lender.projectAmounts.get(pId) || 0;
+          lender.projectAmounts.set(pId, curr + dealAmt);
         }
       }
       if (deal.borrowerPayerId) {
         const borrower = getOrCreatePayer(deal.borrowerPayerId, undefined, deal.borrowerPhone);
         if (borrower) {
-          borrower.partnerDealsBorrowed += deal.amount;
+          const dealAmt = Number(deal.amount) || 0;
+          borrower.partnerDealsBorrowed += dealAmt;
         }
       }
     });
@@ -517,7 +560,7 @@ export default function Dashboard({
     return Array.from(map.values())
       .filter(p => p.totalInvested > 0 || (payers || []).some(rp => rp.id === p.key))
       .sort((a, b) => b.totalInvested - a.totalInvested);
-  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials, partnerDeals]);
+  }, [payers, advanceRecords, paymentRecords, dailyExpenses, hotelAdvances, materials, gstRecords, pettyCashEntries, partnerDeals, labours]);
 
   const totalInvestedByPayers = useMemo(() => {
     return payerContributions.reduce((sum, p) => sum + p.totalInvested, 0);
@@ -2518,6 +2561,9 @@ export default function Dashboard({
                 hotelAdvances={hotelAdvances || []}
                 materials={materials || []}
                 gstRecords={gstRecords || []}
+                pettyCashEntries={pettyCashEntries || []}
+                partnerDeals={partnerDeals || []}
+                labours={labours || []}
                 activeProjectId={activeProjectId}
                 onAddPayer={async (p) => {
                   if (onAddPayer) await onAddPayer(p);
