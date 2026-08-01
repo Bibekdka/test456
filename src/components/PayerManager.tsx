@@ -1,5 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
+import { 
+  ResponsiveContainer, 
+  PieChart as RechartsPieChart, 
+  Pie, 
+  Cell, 
+  Tooltip as RechartsTooltip, 
+  LineChart as RechartsLineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Legend 
+} from 'recharts';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import { Payer, Project, Advance, Payment, DailyExpense, HotelAdvance, Material, GstRecord, PettyCashEntry } from '../types';
 import { generateId } from '../utils/id';
 import { 
@@ -34,7 +49,11 @@ import {
   ArrowUpDown,
   SlidersHorizontal,
   Zap,
-  Hash
+  Hash,
+  LineChart as LineChartIcon,
+  Activity,
+  FileSpreadsheet,
+  Printer
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -428,8 +447,89 @@ export default function PayerManager({
   }, [filteredPayers, projectFilter]);
 
   // Analytics View Mode & Sorting State
-  const [analyticsViewMode, setAnalyticsViewMode] = useState<'both' | 'pie' | 'comparison'>('both');
+  const [analyticsViewMode, setAnalyticsViewMode] = useState<'all' | 'pie' | 'trend' | 'comparison'>('all');
   const [rankSortBy, setRankSortBy] = useState<'amount' | 'count' | 'avg'>('amount');
+
+  // Helper to parse date to Year-Month key and label
+  const getYearMonthInfo = (dateStr: string) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    const yyyy = d.getFullYear();
+    const mm = d.getMonth();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const label = `${monthNames[mm]} '${String(yyyy).slice(2)}`;
+    return {
+      key: `${yyyy}-${String(mm + 1).padStart(2, '0')}`,
+      label,
+      sortVal: yyyy * 100 + (mm + 1)
+    };
+  };
+
+  // Compute Monthly Expenditure Trend Data per Payer
+  const monthlyTrendData = useMemo(() => {
+    const monthMap: Record<string, { key: string; label: string; sortVal: number; total: number; [payerName: string]: any }> = {};
+    
+    // Active payers with non-zero disbursed amount
+    const activePayers = filteredPayers.filter(p => p.totalDisbursed > 0).map((p, idx) => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length]
+    }));
+
+    filteredPayers.forEach(p => {
+      let txs = p.transactions;
+      if (projectFilter !== 'all') {
+        txs = txs.filter(t => t.projectId === projectFilter);
+      }
+      txs.forEach(t => {
+        if (!t.date) return;
+        const info = getYearMonthInfo(t.date);
+        if (!info) return;
+
+        if (!monthMap[info.key]) {
+          monthMap[info.key] = {
+            key: info.key,
+            label: info.label,
+            sortVal: info.sortVal,
+            total: 0
+          };
+          activePayers.forEach(ap => {
+            monthMap[info.key][ap.name] = 0;
+          });
+        }
+
+        monthMap[info.key][p.name] = (monthMap[info.key][p.name] || 0) + t.amount;
+        monthMap[info.key].total += t.amount;
+      });
+    });
+
+    const sortedMonths = Object.values(monthMap).sort((a, b) => a.sortVal - b.sortVal);
+
+    // Peak Month & Top Disburser Stats
+    let peakMonth = { label: 'None', total: 0, topPayer: 'None', topPayerAmt: 0 };
+    sortedMonths.forEach(m => {
+      if (m.total > peakMonth.total) {
+        let topP = 'None';
+        let topAmt = 0;
+        activePayers.forEach(p => {
+          const amt = m[p.name] || 0;
+          if (amt > topAmt) {
+            topAmt = amt;
+            topP = p.name;
+          }
+        });
+        peakMonth = { label: m.label, total: m.total, topPayer: topP, topPayerAmt: topAmt };
+      }
+    });
+
+    return {
+      months: sortedMonths,
+      activePayers,
+      peakMonth
+    };
+  }, [filteredPayers, projectFilter]);
 
   // Compute Ranking and Comparison Matrix Data
   const rankedPayersList = useMemo(() => {
@@ -493,6 +593,336 @@ export default function PayerManager({
     const byAvg = [...rankedPayersList].sort((a, b) => b.avgTicket - a.avgTicket)[0];
     return { byAmount, byCount, byAvg };
   }, [rankedPayersList]);
+
+  // Combined itemized transactions across all filtered disbursers for export & print
+  const allFilteredTransactions = useMemo(() => {
+    const list: Array<{
+      id: string;
+      payerName: string;
+      payerRole: string;
+      date: string;
+      category: string;
+      projectId: string;
+      projectName: string;
+      description: string;
+      amount: number;
+    }> = [];
+
+    filteredPayers.forEach(p => {
+      let txs = p.transactions;
+      if (projectFilter !== 'all') {
+        txs = txs.filter(t => t.projectId === projectFilter);
+      }
+      txs.forEach(t => {
+        list.push({
+          id: t.id,
+          payerName: p.name,
+          payerRole: p.role || 'Authorized Disburser',
+          date: t.date,
+          category: t.category,
+          projectId: t.projectId,
+          projectName: t.projectName,
+          description: t.description,
+          amount: t.amount
+        });
+      });
+    });
+
+    return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [filteredPayers, projectFilter]);
+
+  // EXPORT ALL METRICS TO PDF REPORT
+  const handleExportPDF = () => {
+    try {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const currentProjectName = projectFilter === 'all' 
+        ? 'All Construction Sites' 
+        : projects.find(p => p.id === projectFilter)?.name || 'Selected Site';
+
+      const exportDateStr = new Date().toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+
+      // 1. Header Title Banner
+      doc.setFillColor(30, 41, 59); // Slate-800
+      doc.rect(0, 0, 210, 26, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('AUTHORIZED PAYER & DISBURSER FINANCIAL REPORT', 14, 11);
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Site Context: ${currentProjectName}  |  Generated: ${exportDateStr}`, 14, 19);
+
+      let startY = 32;
+
+      // 2. Executive Key Metrics Table
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('1. Executive Financial Summary', 14, startY);
+      startY += 4;
+
+      const summaryData = [
+        ['Total Disbursed Outlays', `₹${pieChartData.total.toLocaleString('en-IN')}`],
+        ['Active Disbursers Count', `${rankedPayersList.length} Authorized Payers`],
+        ['Top Capital Disburser', `${topHighlights?.byAmount ? `${topHighlights.byAmount.name} (₹${topHighlights.byAmount.totalAmount.toLocaleString('en-IN')} - ${topHighlights.byAmount.percentage}%)` : 'N/A'}`],
+        ['Peak Spending Month', `${monthlyTrendData.peakMonth.label || 'N/A'} (₹${monthlyTrendData.peakMonth.total.toLocaleString('en-IN')} by ${monthlyTrendData.peakMonth.topPayer || 'N/A'})`],
+        ['Total Disbursed Transactions', `${allFilteredTransactions.length} itemized outlays`]
+      ];
+
+      autoTable(doc, {
+        startY: startY,
+        head: [['Key Metric Indicator', 'Financial Value / Detail']],
+        body: summaryData,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold', fontSize: 8.5 },
+        bodyStyles: { fontSize: 8, textColor: 30 },
+        columnStyles: { 0: { cellWidth: 65, fontStyle: 'bold' }, 1: { cellWidth: 'auto' } },
+        margin: { left: 14, right: 14 }
+      });
+
+      startY = (doc as any).lastAutoTable.finalY + 7;
+
+      // 3. Disburser Leaderboard & Contribution Matrix
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text('2. Disburser Volume & Contribution Leaderboard', 14, startY);
+      startY += 4;
+
+      const leaderboardRows = rankedPayersList.map((p, idx) => [
+        `#${idx + 1}`,
+        p.name,
+        p.role,
+        `₹${p.totalAmount.toLocaleString('en-IN')}`,
+        `${p.percentage}%`,
+        `${p.transactionCount} entries`,
+        `₹${p.avgTicket.toLocaleString('en-IN')}`,
+        p.dominantCategory
+      ]);
+
+      autoTable(doc, {
+        startY: startY,
+        head: [['Rank', 'Payer Name', 'Designation / Role', 'Total Outlay (₹)', 'Share %', 'Trx Count', 'Avg/Trx (₹)', 'Top Category']],
+        body: leaderboardRows,
+        theme: 'striped',
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 7.5, textColor: 30 },
+        margin: { left: 14, right: 14 }
+      });
+
+      startY = (doc as any).lastAutoTable.finalY + 7;
+
+      // Check page space for Monthly Trends
+      if (startY > 230) {
+        doc.addPage();
+        startY = 16;
+      }
+
+      // 4. Monthly Expenditure Trends Matrix
+      if (monthlyTrendData.months.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text('3. Monthly Expenditure Trends Matrix', 14, startY);
+        startY += 4;
+
+        const activePayerNames = monthlyTrendData.activePayers.map(ap => ap.name);
+        const trendHeaders = ['Month', 'Total Outlay (₹)', ...activePayerNames];
+
+        const trendRows = monthlyTrendData.months.map(m => {
+          const row = [m.label, `₹${m.total.toLocaleString('en-IN')}`];
+          activePayerNames.forEach(pName => {
+            const val = m[pName] || 0;
+            row.push(val > 0 ? `₹${val.toLocaleString('en-IN')}` : '—');
+          });
+          return row;
+        });
+
+        autoTable(doc, {
+          startY: startY,
+          head: [trendHeaders],
+          body: trendRows,
+          theme: 'grid',
+          headStyles: { fillColor: [16, 185, 129], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+          bodyStyles: { fontSize: 7, textColor: 30 },
+          margin: { left: 14, right: 14 }
+        });
+
+        startY = (doc as any).lastAutoTable.finalY + 7;
+      }
+
+      // Check page space for Itemized Log
+      if (startY > 220) {
+        doc.addPage();
+        startY = 16;
+      }
+
+      // 5. Itemized Transactions Ledger
+      if (allFilteredTransactions.length > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10.5);
+        doc.setTextColor(30, 41, 59);
+        doc.text('4. Itemized Disburser Outlays Log', 14, startY);
+        startY += 4;
+
+        const trxRows = allFilteredTransactions.map(t => [
+          t.date ? new Date(t.date).toLocaleDateString('en-IN') : 'N/A',
+          t.payerName,
+          t.category,
+          t.projectName,
+          t.description,
+          `₹${t.amount.toLocaleString('en-IN')}`
+        ]);
+
+        autoTable(doc, {
+          startY: startY,
+          head: [['Date', 'Disburser Name', 'Category', 'Construction Site', 'Description / Detail', 'Amount (₹)']],
+          body: trxRows,
+          theme: 'striped',
+          headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+          bodyStyles: { fontSize: 7, textColor: 30 },
+          columnStyles: {
+            0: { cellWidth: 20 },
+            1: { cellWidth: 30 },
+            2: { cellWidth: 26 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 'auto' },
+            5: { cellWidth: 24, fontStyle: 'bold', halign: 'right' }
+          },
+          margin: { left: 14, right: 14 }
+        });
+      }
+
+      // Page Numbers Footer
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184);
+        doc.text(
+          `Authorized Payer Financial Analytics • Page ${i} of ${pageCount}`,
+          105,
+          290,
+          { align: 'center' }
+        );
+      }
+
+      const cleanProjectName = currentProjectName.replace(/[^a-zA-Z0-9]/g, '_');
+      doc.save(`Payer_Financial_Report_${cleanProjectName}_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('Failed to generate PDF report: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // EXPORT ALL METRICS TO EXCEL (.XLSX) WORKBOOK
+  const handleExportExcel = () => {
+    try {
+      const currentProjectName = projectFilter === 'all' 
+        ? 'All Construction Sites' 
+        : projects.find(p => p.id === projectFilter)?.name || 'Selected Site';
+
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Executive Overview & Leaderboard
+      const overviewData = [
+        ['AUTHORIZED PAYER & DISBURSER FINANCIAL ANALYTICS REPORT'],
+        [`Site Context: ${currentProjectName}`],
+        [`Generated On: ${new Date().toLocaleString('en-IN')}`],
+        [],
+        ['EXECUTIVE KEY METRICS'],
+        ['Total Disbursed Outlays (INR)', pieChartData.total],
+        ['Total Active Disbursers', rankedPayersList.length],
+        ['Top Disburser Name', topHighlights?.byAmount?.name || 'N/A'],
+        ['Top Disburser Amount (INR)', topHighlights?.byAmount?.totalAmount || 0],
+        ['Peak Spending Month', monthlyTrendData.peakMonth.label || 'N/A'],
+        ['Peak Month Total Outlay (INR)', monthlyTrendData.peakMonth.total],
+        ['Total Itemized Outlays Logged', allFilteredTransactions.length],
+        [],
+        ['DISBURSER CONTRIBUTION & RANKING LEADERBOARD'],
+        ['Rank', 'Disburser Name', 'Designation / Role', 'Phone', 'Total Outlay (INR)', 'Contribution Share (%)', 'Transactions Count', 'Avg Ticket Size (INR)', 'Dominant Expense Category', 'Top Category Outlay (INR)']
+      ];
+
+      rankedPayersList.forEach((p, idx) => {
+        overviewData.push([
+          idx + 1,
+          p.name,
+          p.role,
+          p.phone || 'N/A',
+          p.totalAmount,
+          p.percentage,
+          p.transactionCount,
+          p.avgTicket,
+          p.dominantCategory,
+          p.dominantCategoryAmount
+        ]);
+      });
+
+      const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
+      XLSX.utils.book_append_sheet(wb, wsOverview, 'Executive Overview');
+
+      // Sheet 2: Monthly Trends Matrix
+      if (monthlyTrendData.months.length > 0) {
+        const activePayerNames = monthlyTrendData.activePayers.map(ap => ap.name);
+        const trendHeader = ['Month', 'Total Site Outlay (INR)', ...activePayerNames];
+        const trendRows: any[][] = [
+          ['MONTHLY EXPENDITURE TRENDS PER DISBURSER'],
+          [`Site Context: ${currentProjectName}`],
+          [],
+          trendHeader
+        ];
+
+        monthlyTrendData.months.forEach(m => {
+          const row = [m.label, m.total];
+          activePayerNames.forEach(pName => {
+            row.push(m[pName] || 0);
+          });
+          trendRows.push(row);
+        });
+
+        const wsTrends = XLSX.utils.aoa_to_sheet(trendRows);
+        XLSX.utils.book_append_sheet(wb, wsTrends, 'Monthly Trends');
+      }
+
+      // Sheet 3: Itemized Outlays Log
+      const trxHeader = ['Date', 'Disburser Name', 'Category', 'Construction Site', 'Description / Details', 'Amount (INR)'];
+      const trxRows: any[][] = [
+        ['ITEMIZED DISBURSER TRANSACTIONS LEDGER'],
+        [`Site Context: ${currentProjectName}`],
+        [],
+        trxHeader
+      ];
+
+      allFilteredTransactions.forEach(t => {
+        trxRows.push([
+          t.date ? new Date(t.date).toLocaleDateString('en-IN') : '',
+          t.payerName,
+          t.category,
+          t.projectName,
+          t.description,
+          t.amount
+        ]);
+      });
+
+      const wsTrx = XLSX.utils.aoa_to_sheet(trxRows);
+      XLSX.utils.book_append_sheet(wb, wsTrx, 'Itemized Ledger');
+
+      const cleanProjectName = currentProjectName.replace(/[^a-zA-Z0-9]/g, '_');
+      XLSX.writeFile(wb, `Payer_Financial_Analytics_${cleanProjectName}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      alert('Failed to generate Excel sheet: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // PRINT FULL REPORT
+  const handlePrintReport = () => {
+    window.print();
+  };
 
   // Open Add Payer Modal
   const handleOpenAddForm = () => {
@@ -569,7 +999,9 @@ export default function PayerManager({
 
   return (
     <div className="space-y-6">
-      {/* HEADER BAR */}
+      {/* INTERACTIVE SCREEN UI (Hidden when printing) */}
+      <div className="print:hidden space-y-6">
+        {/* HEADER BAR */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-slate-800">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
@@ -584,14 +1016,47 @@ export default function PayerManager({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenAddForm}
-            className="inline-flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition cursor-pointer shrink-0 border border-indigo-400/30"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Register Authorized Payer</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {/* EXPORT & PRINT BUTTONS TOOLBAR */}
+            <div className="flex items-center gap-1.5 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/80 text-xs">
+              <button
+                type="button"
+                onClick={handleExportPDF}
+                title="Export Complete Financial Analytics Report as PDF"
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span> PDF
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                title="Export All Analytics, Trends & Ledgers to Excel Sheet (.xlsx)"
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Export</span> Excel
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintReport}
+                title="Print Complete Payer & Financial Analytics Report"
+                className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenAddForm}
+              className="inline-flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition cursor-pointer shrink-0 border border-indigo-400/30"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Register Authorized Payer</span>
+            </button>
+          </div>
         </div>
 
         {/* OVERVIEW STATS ROW */}
@@ -652,9 +1117,9 @@ export default function PayerManager({
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
             <button
               type="button"
-              onClick={() => setAnalyticsViewMode('both')}
+              onClick={() => setAnalyticsViewMode('all')}
               className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                analyticsViewMode === 'both'
+                analyticsViewMode === 'all'
                   ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
@@ -673,6 +1138,18 @@ export default function PayerManager({
             >
               <PieChart className="w-3.5 h-3.5" />
               <span>Pie Shares</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnalyticsViewMode('trend')}
+              className={`px-2.5 py-1.5 rounded-lg font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                analyticsViewMode === 'trend'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs font-bold'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Monthly Trends</span>
             </button>
             <button
               type="button"
@@ -705,7 +1182,7 @@ export default function PayerManager({
       </div>
 
       {/* VISUAL SPENDING BREAKDOWN PIE CHART */}
-      {(analyticsViewMode === 'both' || analyticsViewMode === 'pie') && (
+      {(analyticsViewMode === 'all' || analyticsViewMode === 'pie') && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
@@ -832,8 +1309,162 @@ export default function PayerManager({
         </div>
       )}
 
+      {/* TIME-SERIES MONTHLY EXPENDITURE TRENDS LINE CHART */}
+      {(analyticsViewMode === 'all' || analyticsViewMode === 'trend') && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                <span>Monthly Expenditure Trends by Disburser</span>
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Time-series tracking of monthly outlays per disburser to identify peak spending periods and activity cycles.
+              </p>
+            </div>
+
+            {/* PEAK MONTH BADGE */}
+            {monthlyTrendData.peakMonth.total > 0 && (
+              <div className="bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border border-emerald-200/80 dark:border-emerald-800 px-3 py-1.5 rounded-xl text-xs shrink-0 self-start sm:self-auto flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Peak Spending Month</div>
+                  <div className="font-mono font-bold text-xs">
+                    {monthlyTrendData.peakMonth.label}: <span className="text-emerald-950 dark:text-emerald-100 font-extrabold">₹{monthlyTrendData.peakMonth.total.toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {monthlyTrendData.months.length === 0 ? (
+            <div className="py-10 text-center space-y-2">
+              <TrendingUp className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                No monthly transaction trends recorded yet.
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Log transactions with dates assigned to authorized disbursers to view monthly spending activity over time.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-1">
+              {/* LINE CHART */}
+              <div className="h-[280px] w-full pt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart
+                    data={monthlyTrendData.months}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                    <XAxis 
+                      dataKey="label" 
+                      tick={{ fontSize: 11, fill: '#64748b' }}
+                      axisLine={{ stroke: '#cbd5e1' }}
+                      tickLine={false}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 10, fill: '#64748b' }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(val) => {
+                        if (val >= 100000) return `₹${(val / 100000).toFixed(1)}L`;
+                        if (val >= 1000) return `₹${(val / 1000).toFixed(0)}k`;
+                        return `₹${val}`;
+                      }}
+                    />
+                    <RechartsTooltip 
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const monthObj = monthlyTrendData.months.find(m => m.label === label);
+                          return (
+                            <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xl border border-slate-700 text-xs space-y-2 min-w-[200px]">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                                <span className="font-bold text-indigo-300">{label} Outlays</span>
+                                <span className="font-mono font-extrabold text-emerald-400">₹{monthObj?.total.toLocaleString()}</span>
+                              </div>
+                              <div className="space-y-1">
+                                {payload
+                                  .filter(p => Number(p.value) > 0)
+                                  .map((p, idx) => (
+                                    <div key={idx} className="flex items-center justify-between gap-3 text-[11px]">
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                                        <span className="text-slate-200 font-medium truncate">{p.name}</span>
+                                      </div>
+                                      <span className="font-mono font-bold text-white shrink-0">₹{Number(p.value).toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }}
+                      iconType="circle"
+                      iconSize={8}
+                    />
+                    {monthlyTrendData.activePayers.map((ap) => (
+                      <Line
+                        key={ap.id}
+                        type="monotone"
+                        dataKey={ap.name}
+                        name={ap.name}
+                        stroke={ap.color}
+                        strokeWidth={2.5}
+                        dot={{ r: 4, strokeWidth: 1.5, fill: '#fff' }}
+                        activeDot={{ r: 7, strokeWidth: 2 }}
+                        connectNulls
+                      />
+                    ))}
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* TREND METRICS FOOTER */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+                <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Recorded Timeline</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{monthlyTrendData.months.length} Active Months</span>
+                  </div>
+                  <Calendar className="w-5 h-5 text-indigo-500 opacity-80" />
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Peak Month Top Disburser</span>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 truncate block max-w-[150px]">
+                      {monthlyTrendData.peakMonth.topPayer}
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                    ₹{monthlyTrendData.peakMonth.topPayerAmt.toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Monthly Avg Disbursed</span>
+                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                      ₹{monthlyTrendData.months.length > 0 
+                        ? Math.round(monthlyTrendData.months.reduce((s, m) => s + m.total, 0) / monthlyTrendData.months.length).toLocaleString()
+                        : 0}
+                    </span>
+                  </div>
+                  <BarChart3 className="w-5 h-5 text-emerald-500 opacity-80" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* PAYER COMPARISON & RANKING LEADERBOARD MATRIX */}
-      {(analyticsViewMode === 'both' || analyticsViewMode === 'comparison') && pieChartData.total > 0 && (
+      {(analyticsViewMode === 'all' || analyticsViewMode === 'comparison') && pieChartData.total > 0 && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
@@ -1403,6 +2034,157 @@ export default function PayerManager({
           onClose={() => setDeletingPayerId(null)}
         />
       )}
+      </div>
+
+      {/* PRINT-ONLY COMPREHENSIVE FINANCIAL ANALYTICS REPORT CONTAINER */}
+      <div className="hidden print:block p-6 text-black bg-white space-y-6">
+        {/* PRINT HEADER */}
+        <div className="border-b-2 border-slate-900 pb-4 flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-extrabold uppercase tracking-tight text-slate-900">
+              Authorized Payer & Investor Outlay Analytics Report
+            </h1>
+            <p className="text-xs text-slate-600 mt-1">
+              Construction Site Context: <strong className="text-slate-900">{projectFilter === 'all' ? 'All Active Construction Sites' : projects.find(p => p.id === projectFilter)?.name || 'Selected Site'}</strong>
+            </p>
+          </div>
+          <div className="text-right text-xs text-slate-500 font-mono">
+            <div>Report Date: {new Date().toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+            <div>Time: {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+        </div>
+
+        {/* 1. EXECUTIVE KEY METRICS GRID */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-300 pb-1">
+            1. Executive Financial Summary
+          </h2>
+          <div className="grid grid-cols-4 gap-3 text-xs">
+            <div className="p-3 border border-slate-300 rounded-lg bg-slate-50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Total Disbursed Outlays</div>
+              <div className="text-base font-mono font-bold text-slate-900">₹{pieChartData.total.toLocaleString('en-IN')}</div>
+            </div>
+            <div className="p-3 border border-slate-300 rounded-lg bg-slate-50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Active Disbursers</div>
+              <div className="text-base font-mono font-bold text-slate-900">{rankedPayersList.length} Authorized Payers</div>
+            </div>
+            <div className="p-3 border border-slate-300 rounded-lg bg-slate-50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Top Disburser</div>
+              <div className="text-sm font-bold text-slate-900 truncate">{topHighlights?.byAmount?.name || 'N/A'}</div>
+              <div className="text-xs font-mono font-bold text-slate-700">₹{topHighlights?.byAmount?.totalAmount.toLocaleString('en-IN') || 0} ({topHighlights?.byAmount?.percentage}%)</div>
+            </div>
+            <div className="p-3 border border-slate-300 rounded-lg bg-slate-50">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Peak Spending Month</div>
+              <div className="text-sm font-bold text-slate-900">{monthlyTrendData.peakMonth.label || 'N/A'}</div>
+              <div className="text-xs font-mono font-bold text-slate-700">₹{monthlyTrendData.peakMonth.total.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. DISBURSER CONTRIBUTION & RANKING LEADERBOARD */}
+        <div className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-300 pb-1">
+            2. Disburser Volume & Contribution Leaderboard
+          </h2>
+          <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+            <thead className="bg-slate-100 text-slate-800 font-bold uppercase text-[10px]">
+              <tr>
+                <th className="p-2 border border-slate-300 text-center w-10">Rank</th>
+                <th className="p-2 border border-slate-300">Authorized Payer</th>
+                <th className="p-2 border border-slate-300">Designation / Role</th>
+                <th className="p-2 border border-slate-300 text-right">Total Outlay (₹)</th>
+                <th className="p-2 border border-slate-300 text-center">Share %</th>
+                <th className="p-2 border border-slate-300 text-center">Transactions</th>
+                <th className="p-2 border border-slate-300 text-right">Avg / Trx (₹)</th>
+                <th className="p-2 border border-slate-300">Dominant Category</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rankedPayersList.map((p, idx) => (
+                <tr key={p.id} className="border-b border-slate-200">
+                  <td className="p-2 border border-slate-300 text-center font-bold">#{idx + 1}</td>
+                  <td className="p-2 border border-slate-300 font-bold">{p.name}</td>
+                  <td className="p-2 border border-slate-300 text-slate-600">{p.role}</td>
+                  <td className="p-2 border border-slate-300 text-right font-mono font-bold">₹{p.totalAmount.toLocaleString('en-IN')}</td>
+                  <td className="p-2 border border-slate-300 text-center font-bold">{p.percentage}%</td>
+                  <td className="p-2 border border-slate-300 text-center font-mono">{p.transactionCount}</td>
+                  <td className="p-2 border border-slate-300 text-right font-mono">₹{p.avgTicket.toLocaleString('en-IN')}</td>
+                  <td className="p-2 border border-slate-300">{p.dominantCategory}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 3. MONTHLY EXPENDITURE TRENDS MATRIX */}
+        {monthlyTrendData.months.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-300 pb-1">
+              3. Monthly Expenditure Trends Matrix
+            </h2>
+            <table className="w-full text-left text-xs border border-slate-300 border-collapse">
+              <thead className="bg-slate-100 text-slate-800 font-bold uppercase text-[10px]">
+                <tr>
+                  <th className="p-2 border border-slate-300">Month</th>
+                  <th className="p-2 border border-slate-300 text-right">Total Site Outlay (₹)</th>
+                  {monthlyTrendData.activePayers.map(ap => (
+                    <th key={ap.id} className="p-2 border border-slate-300 text-right">{ap.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyTrendData.months.map(m => (
+                  <tr key={m.key} className="border-b border-slate-200">
+                    <td className="p-2 border border-slate-300 font-bold">{m.label}</td>
+                    <td className="p-2 border border-slate-300 text-right font-mono font-bold">₹{m.total.toLocaleString('en-IN')}</td>
+                    {monthlyTrendData.activePayers.map(ap => {
+                      const val = m[ap.name] || 0;
+                      return (
+                        <td key={ap.id} className="p-2 border border-slate-300 text-right font-mono">
+                          {val > 0 ? `₹${val.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 4. ITEMIZED TRANSACTIONS LEDGER */}
+        {allFilteredTransactions.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-300 pb-1">
+              4. Itemized Outlays Log ({allFilteredTransactions.length} Transactions)
+            </h2>
+            <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
+              <thead className="bg-slate-100 text-slate-800 font-bold uppercase text-[9px]">
+                <tr>
+                  <th className="p-1.5 border border-slate-300">Date</th>
+                  <th className="p-1.5 border border-slate-300">Disburser Name</th>
+                  <th className="p-1.5 border border-slate-300">Category</th>
+                  <th className="p-1.5 border border-slate-300">Construction Site</th>
+                  <th className="p-1.5 border border-slate-300">Description / Details</th>
+                  <th className="p-1.5 border border-slate-300 text-right">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allFilteredTransactions.map((t, idx) => (
+                  <tr key={t.id + idx} className="border-b border-slate-200">
+                    <td className="p-1.5 border border-slate-300 font-mono">{t.date ? new Date(t.date).toLocaleDateString('en-IN') : 'N/A'}</td>
+                    <td className="p-1.5 border border-slate-300 font-bold">{t.payerName}</td>
+                    <td className="p-1.5 border border-slate-300">{t.category}</td>
+                    <td className="p-1.5 border border-slate-300">{t.projectName}</td>
+                    <td className="p-1.5 border border-slate-300">{t.description}</td>
+                    <td className="p-1.5 border border-slate-300 text-right font-mono font-bold">₹{t.amount.toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
