@@ -422,9 +422,10 @@ export default function Dashboard({
       if (adv.paidBy) {
         const p = getOrCreatePayer(adv.paidBy, undefined, adv.partnerPhone);
         if (p) {
+          const advContrib = adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount;
           p.totalInvested += adv.amount;
           p.advancesTotal += adv.amount;
-          if (adv.isPartnerHelp) p.partnerHelpTotal += adv.amount;
+          if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(adv.projectId) || 0;
           p.projectAmounts.set(adv.projectId, curr + adv.amount);
@@ -452,9 +453,10 @@ export default function Dashboard({
       if (exp.payerId) {
         const p = getOrCreatePayer(exp.payerId, undefined, exp.partnerPhone);
         if (p) {
+          const expContrib = exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount;
           p.totalInvested += exp.amount;
           p.expensesTotal += exp.amount;
-          if (exp.isPartnerHelp) p.partnerHelpTotal += exp.amount;
+          if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(exp.projectId) || 0;
           p.projectAmounts.set(exp.projectId, curr + exp.amount);
@@ -468,9 +470,10 @@ export default function Dashboard({
       if (paidBy) {
         const p = getOrCreatePayer(paidBy, undefined, ha.partnerPhone);
         if (p) {
+          const haContrib = ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount;
           p.totalInvested += ha.amount;
           p.hotelTotal += ha.amount;
-          if (ha.isPartnerHelp) p.partnerHelpTotal += ha.amount;
+          if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(ha.projectId) || 0;
           p.projectAmounts.set(ha.projectId, curr + ha.amount);
@@ -484,9 +487,10 @@ export default function Dashboard({
       if (paidBy) {
         const p = getOrCreatePayer(paidBy, undefined, m.partnerPhone);
         if (p) {
+          const mContrib = m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost;
           p.totalInvested += m.cost;
           p.materialsTotal += m.cost;
-          if (m.isPartnerHelp) p.partnerHelpTotal += m.cost;
+          if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(m.projectId) || 0;
           p.projectAmounts.set(m.projectId, curr + m.cost);
@@ -518,6 +522,31 @@ export default function Dashboard({
   const totalInvestedByPayers = useMemo(() => {
     return payerContributions.reduce((sum, p) => sum + p.totalInvested, 0);
   }, [payerContributions]);
+
+  const totalPartnerHelpSum = useMemo(() => {
+    let total = 0;
+    (dailyExpenses || []).forEach(e => {
+      if (e.isPartnerHelp) {
+        total += (e.partnerAmount !== undefined ? e.partnerAmount : e.amount);
+      }
+    });
+    (advanceRecords || []).forEach(a => {
+      if (a.isPartnerHelp) {
+        total += (a.partnerAmount !== undefined ? a.partnerAmount : a.amount);
+      }
+    });
+    (materials || []).forEach(m => {
+      if (m.isPartnerHelp) {
+        total += (m.partnerAmount !== undefined ? m.partnerAmount : m.cost);
+      }
+    });
+    (hotelAdvances || []).forEach(h => {
+      if (h.isPartnerHelp) {
+        total += (h.partnerAmount !== undefined ? h.partnerAmount : h.amount);
+      }
+    });
+    return total;
+  }, [dailyExpenses, advanceRecords, materials, hotelAdvances]);
 
   const filteredPayerContributions = useMemo(() => {
     if (!payerSearch.trim()) return payerContributions;
@@ -678,12 +707,12 @@ export default function Dashboard({
       </div>
 
       {/* Aggregate KPI Summary Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         {/* Total Combined Budget */}
         <button
           type="button"
           onClick={() => setActiveModal('budget')}
-          className="bg-slate-900 text-white rounded-xl p-4 shadow-xs flex flex-col justify-between hover:ring-2 hover:ring-emerald-400/50 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
+          className="bg-slate-900 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between hover:ring-2 hover:ring-emerald-400/50 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Total Budget (All Sites)</span>
@@ -691,17 +720,17 @@ export default function Dashboard({
               <Landmark className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <h4 className="text-2xl font-bold tracking-tight font-mono">
+          <div className="mt-2.5">
+            <h4 className="text-xl font-bold tracking-tight font-mono">
               ₹{overallBudget.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </h4>
             <div className="flex items-center justify-between mt-1">
               <p className="text-[10px] text-slate-400 flex items-center gap-1">
                 <Briefcase className="w-3 h-3 text-slate-400" />
-                <span>Spread across <strong>{projects.length}</strong> site{projects.length === 1 ? '' : 's'}</span>
+                <span><strong>{projects.length}</strong> site{projects.length === 1 ? '' : 's'}</span>
               </p>
               <span className="text-[9px] font-bold text-emerald-400 group-hover:underline flex items-center gap-0.5">
-                Inspect / Edit <ArrowUpRight className="w-3 h-3 inline" />
+                Inspect <ArrowUpRight className="w-3 h-3 inline" />
               </span>
             </div>
           </div>
@@ -714,7 +743,7 @@ export default function Dashboard({
             setExpenseModalFilter('all');
             setActiveModal('expenses');
           }}
-          className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col justify-between hover:border-rose-300 hover:ring-2 hover:ring-rose-400/40 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
+          className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-xs flex flex-col justify-between hover:border-rose-300 hover:ring-2 hover:ring-rose-400/40 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
         >
           <div className="flex items-center justify-between">
             <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Total Spent to Date</span>
@@ -722,14 +751,14 @@ export default function Dashboard({
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <h4 className="text-2xl font-bold tracking-tight font-mono text-rose-700">
+          <div className="mt-2.5">
+            <h4 className="text-xl font-bold tracking-tight font-mono text-rose-700">
               ₹{overallSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </h4>
             <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
               <span>Utilized: <strong>{overallBudget > 0 ? ((overallSpent / overallBudget) * 100).toFixed(1) : 0}%</strong></span>
               <span className="text-[9px] font-bold text-rose-600 group-hover:underline flex items-center gap-0.5">
-                View Logs <ArrowUpRight className="w-3 h-3 inline" />
+                Logs <ArrowUpRight className="w-3 h-3 inline" />
               </span>
             </div>
           </div>
@@ -739,24 +768,24 @@ export default function Dashboard({
         <button
           type="button"
           onClick={() => setActiveModal('balance')}
-          className={`border rounded-xl p-4 shadow-xs flex flex-col justify-between hover:ring-2 hover:ring-emerald-400/50 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden ${
+          className={`border rounded-xl p-3.5 shadow-xs flex flex-col justify-between hover:ring-2 hover:ring-emerald-400/50 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden ${
             overallRemainingBudget < 0 ? 'bg-rose-50/80 border-rose-200' : 'bg-emerald-50/60 border-emerald-100'
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Net Remaining Balance</span>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500">Net Balance</span>
             <div className={`p-1.5 rounded-md ${overallRemainingBudget < 0 ? 'bg-rose-100 text-rose-700 group-hover:bg-rose-600 group-hover:text-white' : 'bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white'} transition-colors`}>
               <CircleDollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <h4 className={`text-2xl font-bold tracking-tight font-mono ${overallRemainingBudget < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
+          <div className="mt-2.5">
+            <h4 className={`text-xl font-bold tracking-tight font-mono ${overallRemainingBudget < 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
               ₹{overallRemainingBudget.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </h4>
             <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1">
-              <span>{overallRemainingBudget < 0 ? 'Over budget across combined sites' : 'Headroom available across sites'}</span>
+              <span>{overallRemainingBudget < 0 ? 'Over budget' : 'Headroom available'}</span>
               <span className="text-[9px] font-bold text-emerald-700 group-hover:underline flex items-center gap-0.5">
-                Balance Details <ArrowUpRight className="w-3 h-3 inline" />
+                Details <ArrowUpRight className="w-3 h-3 inline" />
               </span>
             </div>
           </div>
@@ -766,22 +795,52 @@ export default function Dashboard({
         <button
           type="button"
           onClick={() => setActiveModal('payers')}
-          className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 shadow-xs flex flex-col justify-between hover:border-indigo-300 hover:ring-2 hover:ring-indigo-400/40 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
+          className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-3.5 shadow-xs flex flex-col justify-between hover:border-indigo-300 hover:ring-2 hover:ring-indigo-400/40 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-indigo-900">Partner / Payer Outlays</span>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-indigo-900">Partner Outlays</span>
             <div className="p-1.5 rounded-md bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-3">
-            <h4 className="text-2xl font-bold tracking-tight font-mono text-indigo-900">
+          <div className="mt-2.5">
+            <h4 className="text-xl font-bold tracking-tight font-mono text-indigo-900">
               ₹{totalInvestedByPayers.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </h4>
             <div className="flex items-center justify-between text-[10px] text-indigo-700 mt-1">
-              <span className="truncate">By <strong>{payerContributions.length}</strong> investor{payerContributions.length === 1 ? '' : 's'}/payer{payerContributions.length === 1 ? '' : 's'}</span>
+              <span className="truncate"><strong>{payerContributions.length}</strong> disburser{payerContributions.length === 1 ? '' : 's'}</span>
               <span className="text-[9px] font-bold text-indigo-800 group-hover:underline flex items-center gap-0.5 shrink-0 ml-1">
-                Partner Ledger <ArrowUpRight className="w-3 h-3 inline" />
+                Ledger <ArrowUpRight className="w-3 h-3 inline" />
+              </span>
+            </div>
+          </div>
+        </button>
+
+        {/* 🤝 Partner Financial Support Received (Highlighted in Golden Amber) */}
+        <button
+          type="button"
+          onClick={() => {
+            setExpenseModalFilter('all');
+            setActiveModal('expenses');
+          }}
+          className="bg-gradient-to-br from-amber-50 to-amber-100/80 border border-amber-300 rounded-xl p-3.5 shadow-xs flex flex-col justify-between hover:border-amber-500 hover:ring-2 hover:ring-amber-400/50 hover:scale-[1.01] transition-all cursor-pointer group text-left relative overflow-hidden"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-900 flex items-center gap-1">
+              <span>🤝 Partner Help Received</span>
+            </span>
+            <div className="p-1.5 rounded-md bg-amber-200 text-amber-900 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+              <Handshake className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <h4 className="text-xl font-black tracking-tight font-mono text-amber-950">
+              ₹{totalPartnerHelpSum.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </h4>
+            <div className="flex items-center justify-between text-[10px] text-amber-900 font-bold mt-1">
+              <span className="truncate">Financial support logged</span>
+              <span className="text-[9px] font-bold text-amber-900 group-hover:underline flex items-center gap-0.5 shrink-0 ml-1">
+                View Logs <ArrowUpRight className="w-3 h-3 inline" />
               </span>
             </div>
           </div>
@@ -2220,40 +2279,62 @@ export default function Dashboard({
                       <span>Total Outlay: <strong className="font-mono text-slate-900 font-bold">₹{totalFilteredSum.toLocaleString()}</strong></span>
                     </div>
 
-                    {items.map(item => (
-                      <div
-                        key={`${item.type}-${item.id}`}
-                        className="bg-white border border-slate-200 rounded-xl p-3 shadow-2xs hover:border-slate-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1 min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                              item.type === 'daily' ? 'bg-amber-100 text-amber-900' :
-                              item.type === 'material' ? 'bg-sky-100 text-sky-900' :
-                              item.type === 'food' ? 'bg-rose-100 text-rose-900' :
-                              item.type === 'advance' ? 'bg-purple-100 text-purple-900' : 'bg-indigo-100 text-indigo-900'
-                            }`}>
-                              {item.category || item.type}
-                            </span>
-                            <span className="font-mono text-slate-400 text-[11px]">{item.date}</span>
-                            <span className="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-[10px]">
-                              {item.projectName}
-                            </span>
-                            {item.paidBy && (
-                              <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded">
-                                Paid by: {item.paidBy}
+                    {items.map(item => {
+                      const isPartner = Boolean(item.originalObj?.isPartnerHelp);
+                      const partnerContrib = isPartner 
+                        ? (item.originalObj?.partnerAmount !== undefined ? item.originalObj.partnerAmount : item.amount) 
+                        : null;
+
+                      return (
+                        <div
+                          key={`${item.type}-${item.id}`}
+                          className={`rounded-xl p-3 shadow-2xs transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                            isPartner 
+                              ? 'bg-amber-50/90 dark:bg-amber-950/40 border-2 border-amber-400 dark:border-amber-600' 
+                              : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="space-y-1.5 min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                item.type === 'daily' ? 'bg-amber-100 text-amber-900' :
+                                item.type === 'material' ? 'bg-sky-100 text-sky-900' :
+                                item.type === 'food' ? 'bg-rose-100 text-rose-900' :
+                                item.type === 'advance' ? 'bg-purple-100 text-purple-900' : 'bg-indigo-100 text-indigo-900'
+                              }`}>
+                                {item.category || item.type}
                               </span>
-                            )}
+                              <span className="font-mono text-slate-400 text-[11px]">{item.date}</span>
+                              <span className="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-[10px]">
+                                {item.projectName}
+                              </span>
+                              {item.paidBy && (
+                                <span className="text-[10px] text-indigo-600 font-semibold bg-indigo-50 px-2 py-0.5 rounded">
+                                  Paid by: {item.paidBy}
+                                </span>
+                              )}
+                              {isPartner && (
+                                <span className="text-[10px] text-amber-950 dark:text-amber-200 font-black bg-amber-200 dark:bg-amber-800 border border-amber-400 dark:border-amber-600 px-2.5 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
+                                  <Handshake className="w-3.5 h-3.5 text-amber-700 dark:text-amber-300 shrink-0" />
+                                  <span>🤝 Partner Support: ₹{partnerContrib?.toLocaleString()}</span>
+                                  {item.originalObj?.partnerPhone && (
+                                    <span className="opacity-90 font-mono text-[9px] ml-0.5">(📞 {item.originalObj.partnerPhone})</span>
+                                  )}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate">{item.title}</p>
                           </div>
-                          <p className="font-bold text-slate-800 text-xs truncate">{item.title}</p>
-                        </div>
 
-                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-                          <strong className="font-mono text-sm font-bold text-slate-900">
-                            ₹{item.amount.toLocaleString()}
-                          </strong>
+                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                            <div className="text-right">
+                              <span className="block text-[9px] uppercase font-extrabold text-slate-400">Outlay</span>
+                              <strong className="font-mono text-sm font-bold text-slate-900 dark:text-slate-100">
+                                ₹{item.amount.toLocaleString()}
+                              </strong>
+                            </div>
 
-                          <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2">
+                            <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-2">
                             {/* Edit Action */}
                             {(item.type === 'daily' || item.type === 'material' || item.type === 'food') && (
                               <button
@@ -2290,7 +2371,8 @@ export default function Dashboard({
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 );
               })()}

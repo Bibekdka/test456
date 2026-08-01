@@ -75,6 +75,7 @@ export default function DailyExpensesTracker({
   const [selectedLabourId, setSelectedLabourId] = useState('');
   const [selectedPayerId, setSelectedPayerId] = useState('');
   const [isPartnerHelp, setIsPartnerHelp] = useState(false);
+  const [partnerAmount, setPartnerAmount] = useState('');
   const [partnerPhone, setPartnerPhone] = useState('');
   const [receiptImage, setReceiptImage] = useState<string | undefined>(undefined);
   const [receiptImageName, setReceiptImageName] = useState<string | undefined>(undefined);
@@ -191,6 +192,7 @@ export default function DailyExpensesTracker({
     setSelectedLabourId(exp.labourId || '');
     setSelectedPayerId(exp.payerId || '');
     setIsPartnerHelp(!!exp.isPartnerHelp);
+    setPartnerAmount(exp.partnerAmount !== undefined ? exp.partnerAmount.toString() : '');
     const existingPayer = payers.find(p => p.id === exp.payerId || p.name === exp.payerId);
     setPartnerPhone(exp.partnerPhone || existingPayer?.phone || '');
     setReceiptImage(exp.receiptImage);
@@ -210,6 +212,7 @@ export default function DailyExpensesTracker({
     setSelectedLabourId('');
     setSelectedPayerId('');
     setIsPartnerHelp(false);
+    setPartnerAmount('');
     setPartnerPhone('');
     clearReceipt();
     setShowForm(false);
@@ -240,6 +243,10 @@ export default function DailyExpensesTracker({
       }
     }
 
+    const parsedPartnerAmount = isPartnerHelp 
+      ? (partnerAmount.trim() ? parseFloat(partnerAmount) || parsedAmount : parsedAmount)
+      : undefined;
+
     const expData: DailyExpense = {
       id: editingExpense?.id || generateId('exp'),
       projectId: activeProject.id,
@@ -251,6 +258,7 @@ export default function DailyExpensesTracker({
       labourId: category === 'labour_expense' && selectedLabourId ? selectedLabourId : undefined,
       payerId: selectedPayerId || undefined,
       isPartnerHelp,
+      partnerAmount: parsedPartnerAmount,
       partnerPhone: partnerPhone.trim() || undefined,
       receiptImage,
       receiptImageName
@@ -683,6 +691,46 @@ export default function DailyExpensesTracker({
                           </div>
                         </div>
                       )}
+
+                      {/* Custom Box to Add Money/Amount Provided by Partner */}
+                      <div className="bg-amber-100/90 dark:bg-amber-900/40 p-2.5 rounded-lg border border-amber-300 dark:border-amber-700 space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-[10px] font-black text-amber-900 dark:text-amber-300 uppercase tracking-wider">
+                            💵 Partner Support Contribution Amount (₹) *
+                          </label>
+                          <span className="text-[9px] font-bold text-amber-800 dark:text-amber-400">
+                            Outlay: ₹{parseFloat(amount) || 0}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder={`Defaults to full outlay amount (₹${parseFloat(amount) || 0})`}
+                          value={partnerAmount}
+                          onChange={(e) => setPartnerAmount(e.target.value)}
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-400 dark:border-amber-600 rounded-lg px-3 py-1.5 text-xs font-bold font-mono text-amber-900 dark:text-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                          <span className="text-[9px] font-bold text-amber-800 dark:text-amber-400">Presets:</span>
+                          <button
+                            type="button"
+                            onClick={() => setPartnerAmount(amount)}
+                            className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 hover:bg-amber-300 transition cursor-pointer"
+                          >
+                            Full (100%): ₹{parseFloat(amount) || 0}
+                          </button>
+                          {parseFloat(amount) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPartnerAmount((parseFloat(amount) / 2).toString())}
+                              className="text-[9px] font-extrabold px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 hover:bg-amber-300 transition cursor-pointer"
+                            >
+                              Half (50%): ₹{(parseFloat(amount) / 2)}
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                       <div>
                         <label className="block text-[10px] font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">

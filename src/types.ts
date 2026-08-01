@@ -151,6 +151,7 @@ export interface Advance extends BaseEntity {
   paidBy?: string; // ID or Name of Payer who made the payment
   isPartnerHelp?: boolean;
   partnerPhone?: string;
+  partnerAmount?: number;
 }
 
 export interface Payer extends BaseEntity {
@@ -220,6 +221,7 @@ export interface Material extends BaseEntity {
   paidBy?: string; // ID or Name of Payer who made the material payment
   isPartnerHelp?: boolean;
   partnerPhone?: string;
+  partnerAmount?: number;
   billImage?: string; // Base64 data URI of the uploaded image
   billImageName?: string;
   usages: MaterialUsage[];
@@ -258,6 +260,7 @@ export interface HotelAdvance extends BaseEntity {
   paidBy?: string; // ID or Name of Payer who made the hotel/mess payment
   isPartnerHelp?: boolean;
   partnerPhone?: string;
+  partnerAmount?: number;
   notes?: string;
 }
 
@@ -285,6 +288,7 @@ export interface GstRecord extends BaseEntity {
   paidBy?: string; // ID or Name of Payer who made the payment
   isPartnerHelp?: boolean;
   partnerPhone?: string;
+  partnerAmount?: number;
   notes?: string;
 }
 
@@ -300,6 +304,7 @@ export interface DailyExpense extends BaseEntity {
   payerId?: string; // Reference to Payer ID or Name who distributed/paid this
   isPartnerHelp?: boolean;
   partnerPhone?: string;
+  partnerAmount?: number;
   receiptImage?: string; // Base64 data URI of receipt
   receiptImageName?: string;
 }

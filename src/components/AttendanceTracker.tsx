@@ -68,6 +68,7 @@ export default function AttendanceTracker({
   const [advDesc, setAdvDesc] = useState('');
   const [advPaidBy, setAdvPaidBy] = useState('');
   const [advIsPartnerHelp, setAdvIsPartnerHelp] = useState(false);
+  const [advPartnerAmount, setAdvPartnerAmount] = useState('');
   const [advPartnerPhone, setAdvPartnerPhone] = useState('');
 
   // Payer form state
@@ -328,15 +329,21 @@ export default function AttendanceTracker({
       }
     }
 
+    const parsedAdvAmount = Number(advAmount);
+    const parsedPartnerAmount = advIsPartnerHelp
+      ? (advPartnerAmount.trim() ? Number(advPartnerAmount) || parsedAdvAmount : parsedAdvAmount)
+      : undefined;
+
     onAddAdvance({
       id: generateId('adv'),
       labourId: advLabourId,
       projectId: activeProject.id,
-      amount: Number(advAmount),
+      amount: parsedAdvAmount,
       date: advDate,
       description: advDesc || 'Advance payment',
       paidBy: advPaidBy || '',
       isPartnerHelp: advIsPartnerHelp,
+      partnerAmount: parsedPartnerAmount,
       partnerPhone: advPartnerPhone.trim() || undefined,
     });
 
@@ -345,6 +352,7 @@ export default function AttendanceTracker({
     setAdvDesc('');
     setAdvPaidBy('');
     setAdvIsPartnerHelp(false);
+    setAdvPartnerAmount('');
     setAdvPartnerPhone('');
     setShowAdvanceForm(false);
     alert('Standalone advance logged successfully!');
@@ -1261,6 +1269,44 @@ export default function AttendanceTracker({
                           </div>
                         </div>
                       )}
+
+                      {/* Custom Box to Add Money Provided by Partner */}
+                      <div className="bg-amber-100/90 p-2 rounded-lg border border-amber-300 space-y-1">
+                        <div className="flex justify-between items-center text-[10px]">
+                          <label className="font-extrabold text-amber-900 uppercase tracking-wider">
+                            💵 Partner Support Contribution Amount (₹) *
+                          </label>
+                          <span className="font-bold text-amber-800">Outlay: ₹{Number(advAmount) || 0}</span>
+                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          placeholder={`Defaults to full advance amount (₹${Number(advAmount) || 0})`}
+                          value={advPartnerAmount}
+                          onChange={(e) => setAdvPartnerAmount(e.target.value)}
+                          className="w-full bg-white border border-amber-400 rounded-lg px-2.5 py-1 text-xs font-bold font-mono text-amber-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <span className="text-[9px] font-bold text-amber-800">Presets:</span>
+                          <button
+                            type="button"
+                            onClick={() => setAdvPartnerAmount(advAmount)}
+                            className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 hover:bg-amber-300 transition cursor-pointer"
+                          >
+                            Full (100%): ₹{Number(advAmount) || 0}
+                          </button>
+                          {Number(advAmount) > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setAdvPartnerAmount((Number(advAmount) / 2).toString())}
+                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 hover:bg-amber-300 transition cursor-pointer"
+                            >
+                              Half (50%): ₹{(Number(advAmount) / 2)}
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
                       <div>
                         <label className="block text-[10px] font-bold text-amber-800 uppercase mb-1">Phone Number</label>
