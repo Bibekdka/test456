@@ -553,27 +553,75 @@ export default function DailyExpensesTracker({
 
               {/* Payer/Paying Officer & Partner Help */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Disbursed/Paid By (Payer) *</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Disbursed/Paid By (Payer / Partner) *</label>
+                  <span className="text-[9px] text-indigo-600 font-bold">Includes Labour Registry</span>
+                </div>
+                
                 <select
                   required
                   value={selectedPayerId}
                   onChange={(e) => {
-                    const id = e.target.value;
-                    setSelectedPayerId(id);
-                    const foundPayer = payers.find(p => p.id === id || p.name === id);
+                    const val = e.target.value;
+                    setSelectedPayerId(val);
+                    const foundPayer = payers.find(p => p.id === val || p.name === val);
+                    const foundLabour = labours.find(l => l.id === val || l.name === val);
                     if (foundPayer?.phone) {
                       setPartnerPhone(foundPayer.phone);
+                    } else if (foundLabour?.contact || foundLabour?.phone) {
+                      setPartnerPhone(foundLabour.contact || foundLabour.phone || '');
                     }
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold"
                 >
-                  <option value="">-- Choose Payer --</option>
-                  {payers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}
-                    </option>
-                  ))}
+                  <option value="">-- Choose Payer / Project Member --</option>
+                  
+                  {payers && payers.length > 0 && (
+                    <optgroup label="🏢 Registered Payers & Financial Partners">
+                      {payers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {labours && labours.length > 0 && (
+                    <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                      {labours.map((l) => (
+                        <option key={`lab_${l.id}`} value={l.name}>
+                          {l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''} {(l.contact || l.phone) ? `• 📞 ${l.contact || l.phone}` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
+
+                {/* Quick Selection Chips from Labour Registry */}
+                {labours && labours.length > 0 && (
+                  <div className="pt-1">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Quick Select Member Present in Project:</span>
+                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                      {labours.slice(0, 10).map((l) => (
+                        <button
+                          key={`chip_${l.id}`}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPayerId(l.name);
+                            if (l.contact || l.phone) setPartnerPhone(l.contact || l.phone || '');
+                          }}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                            selectedPayerId === l.name || selectedPayerId === l.id
+                              ? 'bg-indigo-600 text-white border-indigo-700'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                          }`}
+                        >
+                          👤 {l.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-1 flex flex-col gap-1.5">
                   <label className="inline-flex items-center gap-1.5 text-xs text-amber-800 font-bold cursor-pointer">

@@ -1158,14 +1158,27 @@ export default function AttendanceTracker({
                     const val = e.target.value;
                     setAdvPaidBy(val);
                     const pObj = payers.find(p => p.id === val || p.name === val);
+                    const lObj = labours.find(l => l.id === val || l.name === val);
                     if (pObj?.phone) setAdvPartnerPhone(pObj.phone);
+                    else if (lObj?.contact || lObj?.phone) setAdvPartnerPhone(lObj.contact || lObj.phone || '');
                   }}
-                  className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                  className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1.5 text-xs focus:outline-none font-semibold"
                 >
-                  <option value="">Select Payer</option>
-                  {payers.map(p => (
-                    <option key={p.id} value={p.name}>{p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}</option>
-                  ))}
+                  <option value="">Select Disbursed By Payer / Member</option>
+                  {payers && payers.length > 0 && (
+                    <optgroup label="🏢 Registered Financial Payers">
+                      {payers.map(p => (
+                        <option key={p.id} value={p.name}>{p.name} {p.role ? `(${p.role})` : ''} {p.phone ? `• 📞 ${p.phone}` : ''}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {labours && labours.length > 0 && (
+                    <optgroup label="👷 Labour Registry Members (Basanta, BDK, Singra, Deben, etc.)">
+                      {labours.map(l => (
+                        <option key={`adv_lab_${l.id}`} value={l.name}>{l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''} {(l.contact || l.phone) ? `• 📞 ${l.contact || l.phone}` : ''}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
                 <div className="pt-1 flex flex-col gap-1">
                   <label className="inline-flex items-center gap-1.5 text-[11px] text-amber-800 font-bold cursor-pointer">

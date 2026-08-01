@@ -356,15 +356,21 @@ export default function Dashboard({
       const rawKey = payerKey.trim();
       if (!rawKey) return null;
 
-      // Find registered payer by ID or case-insensitive name
+      // Find registered payer or labour registry member by ID or case-insensitive name
       const registered = (payers || []).find(p => 
         p.id === rawKey || 
         p.id.toLowerCase() === rawKey.toLowerCase() ||
         p.name.trim().toLowerCase() === rawKey.toLowerCase()
       );
 
-      const canonicalKey = registered ? registered.id : rawKey.toLowerCase();
-      const displayName = registered ? registered.name : (defaultName || rawKey);
+      const labourMember = !registered ? (labours || []).find(l => 
+        l.id === rawKey || 
+        l.id.toLowerCase() === rawKey.toLowerCase() ||
+        l.name.trim().toLowerCase() === rawKey.toLowerCase()
+      ) : undefined;
+
+      const canonicalKey = registered ? registered.id : (labourMember ? labourMember.id : rawKey.toLowerCase());
+      const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || rawKey));
       const targetLowerName = displayName.trim().toLowerCase();
 
       // Check if map already has this canonical key OR if any existing entry shares the same name
@@ -379,8 +385,8 @@ export default function Dashboard({
       }
 
       if (!map.has(resolvedKey)) {
-        const role = registered ? registered.role : undefined;
-        const phone = registered?.phone || phoneOverride;
+        const role = registered ? registered.role : (labourMember ? `Labour: ${labourMember.role || labourMember.category || 'Member'}` : undefined);
+        const phone = registered?.phone || labourMember?.contact || labourMember?.phone || phoneOverride;
         map.set(resolvedKey, {
           key: resolvedKey,
           name: displayName,
@@ -400,8 +406,8 @@ export default function Dashboard({
         });
       }
       const existing = map.get(resolvedKey)!;
-      if (!existing.phone && (registered?.phone || phoneOverride)) {
-        existing.phone = registered?.phone || phoneOverride;
+      if (!existing.phone && (registered?.phone || labourMember?.contact || labourMember?.phone || phoneOverride)) {
+        existing.phone = registered?.phone || labourMember?.contact || labourMember?.phone || phoneOverride;
       }
       return existing;
     };

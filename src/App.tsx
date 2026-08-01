@@ -1967,6 +1967,7 @@ export default function App() {
               partnerDeals={partnerDeals}
               partnerSettlements={partnerSettlements}
               payers={payers}
+              labours={labours}
               projects={projects}
               activeProjectId={activeProjectId}
               onAddDeal={handleAddPartnerDeal}

@@ -28,7 +28,7 @@ import {
   Receipt,
   Wallet
 } from 'lucide-react';
-import { Payer, Project, PartnerDeal, PartnerSettlement } from '../types';
+import { Payer, Project, PartnerDeal, PartnerSettlement, Labour } from '../types';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -38,6 +38,7 @@ interface PartnerFinanceManagerProps {
   projects: Project[];
   partnerDeals: PartnerDeal[];
   partnerSettlements: PartnerSettlement[];
+  labours?: Labour[];
   activeProjectId: string | null;
   onAddDeal: (deal: Omit<PartnerDeal, 'id'>) => Promise<void>;
   onUpdateDeal: (deal: PartnerDeal) => Promise<void>;
@@ -52,6 +53,7 @@ export default function PartnerFinanceManager({
   projects,
   partnerDeals,
   partnerSettlements,
+  labours = [],
   activeProjectId,
   onAddDeal,
   onUpdateDeal,
@@ -1350,11 +1352,22 @@ export default function PartnerFinanceManager({
                       onChange={(e) => setDealLenderId(e.target.value)}
                       className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {payers.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
-                        </option>
-                      ))}
+                      <optgroup label="🏢 Registered Payers & Financial Partners">
+                        {payers.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {labours && labours.length > 0 && (
+                        <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                          {labours.map(l => (
+                            <option key={`lab_lender_${l.id}`} value={l.id}>
+                              {l.name} {l.role || l.category ? `• ${String(l.role || l.category).toUpperCase()}` : ''} {(l.contact || l.phone) ? `(📞 ${l.contact || l.phone})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </div>
 
@@ -1367,14 +1380,58 @@ export default function PartnerFinanceManager({
                       onChange={(e) => setDealBorrowerId(e.target.value)}
                       className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
-                      {payers.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
-                        </option>
-                      ))}
+                      <optgroup label="🏢 Registered Payers & Financial Partners">
+                        {payers.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {labours && labours.length > 0 && (
+                        <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                          {labours.map(l => (
+                            <option key={`lab_borrower_${l.id}`} value={l.id}>
+                              {l.name} {l.role || l.category ? `• ${String(l.role || l.category).toUpperCase()}` : ''} {(l.contact || l.phone) ? `(📞 ${l.contact || l.phone})` : ''}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </div>
                 </div>
+
+                {/* Quick Select Project Member Chips */}
+                {labours && labours.length > 0 && (
+                  <div className="pt-2 border-t border-amber-200/40 dark:border-amber-900/40">
+                    <span className="text-[10px] font-extrabold text-amber-800 dark:text-amber-400 block mb-1">
+                      Quick Pick Member Present in Project (Labour Registry):
+                    </span>
+                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                      {labours.slice(0, 10).map((l) => (
+                        <div key={`p_chip_${l.id}`} className="inline-flex items-center gap-1 bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 rounded-lg px-2 py-0.5 text-[10px] font-bold">
+                          <span className="text-slate-800 dark:text-slate-200">{l.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => setDealLenderId(l.id)}
+                            className="text-emerald-700 dark:text-emerald-400 hover:underline text-[9px] font-black cursor-pointer ml-1"
+                            title="Set as Lender"
+                          >
+                            Set Lender
+                          </button>
+                          <span className="text-slate-400">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setDealBorrowerId(l.id)}
+                            className="text-rose-700 dark:text-rose-400 hover:underline text-[9px] font-black cursor-pointer"
+                            title="Set as Borrower"
+                          >
+                            Set Borrower
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Amount & Date */}

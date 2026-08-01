@@ -66,6 +66,8 @@ export interface Labour extends BaseEntity {
   name: string;
   perDayWage: number;
   contact: string;
+  phone?: string;
+  category?: string;
   status: 'active' | 'left'; // can be set to 'left' if they leave in the middle
   leftDate?: string; // date they left work
   joinedDate?: string; // date they joined work
