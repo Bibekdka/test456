@@ -642,6 +642,20 @@ export default function PartnerFinanceManager({
 
               <button
                 type="button"
+                onClick={() => {
+                  setNewPayerName('');
+                  setNewPayerRole('Main Contractor');
+                  setNewPayerPhone('');
+                  setIsAddPayerModalOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 px-3.5 py-2.5 rounded-xl font-bold text-xs shadow-md transition cursor-pointer shrink-0"
+              >
+                <UserCheck className="w-4 h-4 text-amber-400" />
+                <span>+ Register Partner Profile</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={handleOpenAddDeal}
                 className="inline-flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2.5 rounded-xl font-extrabold text-xs shadow-lg transition cursor-pointer shrink-0 border border-amber-300"
               >
@@ -1309,35 +1323,57 @@ export default function PartnerFinanceManager({
 
             <form onSubmit={handleSaveNewDeal} className="space-y-4">
               {/* Partner Lender -> Borrower Selection */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/50 dark:bg-amber-950/30 rounded-xl border border-amber-200/60 dark:border-amber-900/40">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Lender Partner (Gave Money) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={dealLenderId}
-                    onChange={(e) => setDealLenderId(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              <div className="p-3 bg-amber-50/50 dark:bg-amber-950/30 rounded-xl border border-amber-200/60 dark:border-amber-900/40 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <span>Select Financial Partners (Contractors, Supervisors, Investors, etc.)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPayerName('');
+                      setNewPayerRole('Main Contractor');
+                      setNewPayerPhone('');
+                      setIsAddPayerModalOpen(true);
+                    }}
+                    className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline font-extrabold flex items-center gap-1 cursor-pointer"
                   >
-                    {payers.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
-                    ))}
-                  </select>
+                    <span>+ Quick Add New Partner</span>
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Borrower Partner (Needs Help) <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    value={dealBorrowerId}
-                    onChange={(e) => setDealBorrowerId(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  >
-                    {payers.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Lender Partner (Gave Money) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={dealLenderId}
+                      onChange={(e) => setDealLenderId(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      {payers.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                      Borrower Partner (Needs Help) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={dealBorrowerId}
+                      onChange={(e) => setDealBorrowerId(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      {payers.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -1632,13 +1668,37 @@ export default function PartnerFinanceManager({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Role / Designation</label>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Role / Designation / Category</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    'Main Contractor',
+                    'Site Supervisor',
+                    'Managing Partner',
+                    'Building Owner / Client',
+                    'Subcontractor Head',
+                    'Site Manager',
+                    'Material Supplier / Vendor'
+                  ].map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setNewPayerRole(r)}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                        newPayerRole === r
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="text"
-                  placeholder="e.g. Managing Partner, Investor, Cashier"
+                  placeholder="e.g. Main Contractor, Site Supervisor, Managing Partner"
                   value={newPayerRole}
                   onChange={(e) => setNewPayerRole(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 

@@ -1980,25 +1980,54 @@ export default function PayerManager({
               {/* Role / Designation */}
               <div>
                 <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
-                  Designation / Financial Category
+                  Designation / Role / Category
                 </label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold mb-2"
                 >
-                  <option value="Partner / Investor">Partner / Investor</option>
-                  <option value="Site Engineer / Supervisor">Site Engineer / Supervisor</option>
-                  <option value="Company Director">Company Director</option>
-                  <option value="Cashier / Account">Cashier / Account</option>
-                  <option value="Subcontractor Head">Subcontractor Head</option>
+                  <option value="Main Contractor">🏗️ Main Contractor</option>
+                  <option value="Site Engineer / Supervisor">👷 Site Engineer / Supervisor</option>
+                  <option value="Partner / Investor">🤝 Partner / Investor</option>
+                  <option value="Building Owner / Client">🏛️ Building Owner / Client</option>
+                  <option value="Subcontractor Head">👷‍♂️ Subcontractor Head</option>
+                  <option value="Site Manager">💼 Site Manager / Executive</option>
+                  <option value="Company Director">🏢 Company Director</option>
+                  <option value="Cashier / Accountant">💳 Cashier / Accountant</option>
+                  <option value="Material Supplier / Vendor">🚚 Material Supplier / Vendor</option>
                   <option value="custom_role">+ Custom Role / Designation...</option>
                 </select>
+
+                {/* Quick Role Selection Pills */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    'Main Contractor',
+                    'Site Engineer / Supervisor',
+                    'Partner / Investor',
+                    'Building Owner / Client',
+                    'Subcontractor Head',
+                    'Site Manager'
+                  ].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRole(r)}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ${
+                        role === r
+                          ? 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-900/50 dark:text-indigo-300 dark:border-indigo-700'
+                          : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
 
                 {role === 'custom_role' && (
                   <input
                     type="text"
-                    placeholder="Enter custom role (e.g. Lead Investor)"
+                    placeholder="Enter custom role (e.g. Electrical Contractor, Lead Investor)"
                     value={customRole}
                     onChange={(e) => setCustomRole(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
