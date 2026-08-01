@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Labour, FoodLog, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
@@ -51,7 +51,19 @@ export default function CustomerMealCalendar({
   const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth()); // 0-indexed
 
   // View mode: 'single' (focused calendar for 1 person) or 'all' (matrix view for all people)
-  const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [viewMode, setViewMode] = useState<'single' | 'all'>(() => {
+    const saved = localStorage.getItem('customer_meal_calendar_view_mode');
+    return (saved === 'all' || saved === 'single') ? saved : 'single';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('customer_meal_calendar_view_mode', viewMode);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [viewMode]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   // Search / filter for labour select
   const [searchTerm, setSearchTerm] = useState('');

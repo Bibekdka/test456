@@ -111,6 +111,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeTab]);
+
   // Core Data State
   const [projects, setProjects] = useState<Project[]>([]);
   const [labours, setLabours] = useState<Labour[]>([]);

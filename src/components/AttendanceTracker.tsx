@@ -41,7 +41,19 @@ export default function AttendanceTracker({
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [trackerState, setTrackerState] = useState<Record<string, { status: AttendanceStatus; advance: number; note: string; paidBy: string }>>({});
   const [showAdvanceForm, setShowAdvanceForm] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'tracker' | 'standalone' | 'payers'>('calendar');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'tracker' | 'standalone' | 'payers'>(() => {
+    const saved = localStorage.getItem('attendance_active_sub_tab');
+    return (saved === 'calendar' || saved === 'tracker' || saved === 'standalone' || saved === 'payers') ? saved : 'calendar';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('attendance_active_sub_tab', activeSubTab);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeSubTab]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   // Dialog and feedback states
   const [showSavedDialog, setShowSavedDialog] = useState(false);

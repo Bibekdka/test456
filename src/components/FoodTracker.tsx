@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Project, Labour, HotelAdvance, FoodLog, Attendance, Payer, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays, UserCheck } from 'lucide-react';
@@ -40,7 +40,19 @@ export default function FoodTracker({
   onFoodCalculationStartDateChange,
 }: FoodTrackerProps) {
   // Filters and Forms State - Manual Mess Flow default
-  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'meals' | 'advances'>('calendar');
+  const [activeSubTab, setActiveSubTab] = useState<'calendar' | 'meals' | 'advances'>(() => {
+    const saved = localStorage.getItem('food_active_sub_tab');
+    return (saved === 'calendar' || saved === 'meals' || saved === 'advances') ? saved : 'calendar';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('food_active_sub_tab', activeSubTab);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [activeSubTab]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
   
   // Quick Daily Mess Logger State
   const [quickMessDate, setQuickMessDate] = useState(new Date().toISOString().split('T')[0]);

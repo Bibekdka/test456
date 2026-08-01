@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Labour, Attendance, AttendanceStatus } from '../types';
 import { generateId } from '../utils/id';
 import { 
@@ -48,7 +48,19 @@ export default function AttendanceCalendar({
   const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth()); // 0-indexed
 
   // View Mode: 'single' (focused calendar for 1 person) or 'all' (matrix grid for all personnel)
-  const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [viewMode, setViewMode] = useState<'single' | 'all'>(() => {
+    const saved = localStorage.getItem('attendance_calendar_view_mode');
+    return (saved === 'all' || saved === 'single') ? saved : 'single';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('attendance_calendar_view_mode', viewMode);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [viewMode]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   // Search, Role & Status filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -309,7 +321,7 @@ export default function AttendanceCalendar({
                 }`}
               >
                 <CalendarDays className="w-3.5 h-3.5" />
-                Worker Month View
+                Customer Month View
               </button>
               <button
                 onClick={() => setViewMode('all')}
@@ -318,7 +330,7 @@ export default function AttendanceCalendar({
                 }`}
               >
                 <Grid className="w-3.5 h-3.5" />
-                All Personnel Grid
+                All Personnel Summary Grid
               </button>
             </div>
           </div>
