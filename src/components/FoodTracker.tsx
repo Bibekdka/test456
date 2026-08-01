@@ -12,6 +12,7 @@ interface FoodTrackerProps {
   foodLogs: FoodLog[];
   payers?: Payer[];
   onAddHotelAdvance: (advance: HotelAdvance) => Promise<void>;
+  onUpdateHotelAdvance?: (advance: HotelAdvance) => Promise<void>;
   onDeleteHotelAdvance: (id: string) => Promise<void>;
   onAddFoodLog: (log: FoodLog) => Promise<void>;
   onUpdateFoodLog?: (log: FoodLog) => Promise<void>;
@@ -29,6 +30,7 @@ export default function FoodTracker({
   foodLogs,
   payers = [],
   onAddHotelAdvance,
+  onUpdateHotelAdvance,
   onDeleteHotelAdvance,
   onAddFoodLog,
   onUpdateFoodLog,
@@ -95,6 +97,41 @@ export default function FoodTracker({
       });
     }
     setEditingLogId(null);
+  };
+
+  // Hotel Advance editing states
+  const [editingAdvanceId, setEditingAdvanceId] = useState<string | null>(null);
+  const [editAdvDate, setEditAdvDate] = useState('');
+  const [editAdvHotelName, setEditAdvHotelName] = useState('');
+  const [editAdvAmount, setEditAdvAmount] = useState<number>(0);
+  const [editAdvPaidBy, setEditAdvPaidBy] = useState('');
+  const [editAdvNotes, setEditAdvNotes] = useState('');
+
+  const handleStartEditAdvance = (adv: HotelAdvance) => {
+    setEditingAdvanceId(adv.id);
+    setEditAdvDate(adv.date);
+    setEditAdvHotelName(adv.hotelName);
+    setEditAdvAmount(adv.amount);
+    setEditAdvPaidBy(adv.paidBy || '');
+    setEditAdvNotes(adv.notes || '');
+  };
+
+  const handleSaveEditAdvance = async (adv: HotelAdvance) => {
+    if (!editAdvHotelName.trim() || editAdvAmount <= 0) {
+      alert('Please provide a valid hotel name and positive amount.');
+      return;
+    }
+    if (onUpdateHotelAdvance) {
+      await onUpdateHotelAdvance({
+        ...adv,
+        date: editAdvDate,
+        hotelName: editAdvHotelName.trim(),
+        amount: editAdvAmount,
+        paidBy: editAdvPaidBy.trim() || undefined,
+        notes: editAdvNotes.trim() || undefined
+      });
+    }
+    setEditingAdvanceId(null);
   };
 
   if (!activeProject) {
@@ -1375,57 +1412,155 @@ export default function FoodTracker({
                   <tbody>
                     {projectAdvances
                       .sort((a, b) => b.date.localeCompare(a.date))
-                      .map((adv) => (
-                        <tr key={adv.id} className="border-b border-slate-100 hover:bg-slate-50/30 text-slate-700">
-                          <td className="px-4 py-3 font-mono text-slate-600">{adv.date}</td>
-                          <td className="px-4 py-3 font-semibold text-slate-800">{adv.hotelName}</td>
-                          <td className="px-4 py-3 font-bold text-slate-900 text-right">
-                            ₹{adv.amount.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-3">
-                            {adv.paidBy ? (
-                              <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px]">
-                                <UserCheck className="w-3 h-3 text-indigo-500" />
-                                {payers.find(p => p.id === adv.paidBy || p.name === adv.paidBy)?.name || adv.paidBy}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 font-mono">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-500 italic max-w-[150px] truncate" title={adv.notes}>
-                            {adv.notes || '—'}
-                          </td>
-                           <td className="px-4 py-3 text-center">
-                             {deletingAdvanceId === adv.id ? (
-                               <div className="flex items-center justify-center gap-1.5 animate-fade-in">
-                                 <button
-                                   onClick={async () => {
-                                     await onDeleteHotelAdvance(adv.id);
-                                     setDeletingAdvanceId(null);
-                                   }}
-                                   className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
-                                 >
-                                   Confirm
-                                 </button>
-                                 <button
-                                   onClick={() => setDeletingAdvanceId(null)}
-                                   className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
-                                 >
-                                   Cancel
-                                 </button>
-                               </div>
-                             ) : (
-                               <button
-                                 onClick={() => setDeletingAdvanceId(adv.id)}
-                                 className="p-1 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
-                                 title="Delete hotel advance"
-                                >
-                                 <Trash2 className="w-4 h-4" />
-                               </button>
-                             )}
-                           </td>
-                        </tr>
-                      ))}
+                      .map((adv) => {
+                        const isEditingThis = editingAdvanceId === adv.id;
+
+                        if (isEditingThis) {
+                          return (
+                            <tr key={adv.id} className="border-b border-indigo-200 bg-indigo-50/50">
+                              <td className="px-2 py-2">
+                                <input
+                                  type="date"
+                                  value={editAdvDate}
+                                  onChange={(e) => setEditAdvDate(e.target.value)}
+                                  className="bg-white border border-slate-300 rounded text-xs px-2 py-1 font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
+                                />
+                              </td>
+                              <td className="px-2 py-2">
+                                <input
+                                  type="text"
+                                  value={editAdvHotelName}
+                                  onChange={(e) => setEditAdvHotelName(e.target.value)}
+                                  placeholder="Hotel Name"
+                                  className="bg-white border border-slate-300 rounded text-xs px-2 py-1 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
+                                />
+                              </td>
+                              <td className="px-2 py-2 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={editAdvAmount}
+                                  onChange={(e) => setEditAdvAmount(parseFloat(e.target.value) || 0)}
+                                  className="bg-white border border-slate-300 rounded text-xs px-2 py-1 font-bold text-right focus:outline-none focus:ring-1 focus:ring-indigo-500 w-24 ml-auto"
+                                />
+                              </td>
+                              <td className="px-2 py-2">
+                                {payers && payers.length > 0 ? (
+                                  <select
+                                    value={editAdvPaidBy}
+                                    onChange={(e) => setEditAdvPaidBy(e.target.value)}
+                                    className="bg-white border border-slate-300 rounded text-xs px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full font-medium text-slate-800"
+                                  >
+                                    <option value="">-- Unassigned --</option>
+                                    {payers.map(p => (
+                                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={editAdvPaidBy}
+                                    onChange={(e) => setEditAdvPaidBy(e.target.value)}
+                                    placeholder="Paid by name"
+                                    className="bg-white border border-slate-300 rounded text-xs px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
+                                  />
+                                )}
+                              </td>
+                              <td className="px-2 py-2">
+                                <input
+                                  type="text"
+                                  value={editAdvNotes}
+                                  onChange={(e) => setEditAdvNotes(e.target.value)}
+                                  placeholder="Notes / Ref"
+                                  className="bg-white border border-slate-300 rounded text-xs px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full"
+                                />
+                              </td>
+                              <td className="px-2 py-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveEditAdvance(adv)}
+                                    className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded transition shadow-xs cursor-pointer"
+                                    title="Save changes"
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingAdvanceId(null)}
+                                    className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded transition cursor-pointer"
+                                    title="Cancel"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
+                        return (
+                          <tr key={adv.id} className="border-b border-slate-100 hover:bg-slate-50/30 text-slate-700">
+                            <td className="px-4 py-3 font-mono text-slate-600">{adv.date}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-800">{adv.hotelName}</td>
+                            <td className="px-4 py-3 font-bold text-slate-900 text-right">
+                              ₹{adv.amount.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3">
+                              {adv.paidBy ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px]">
+                                  <UserCheck className="w-3 h-3 text-indigo-500" />
+                                  {payers.find(p => p.id === adv.paidBy || p.name === adv.paidBy)?.name || adv.paidBy}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-mono">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 italic max-w-[150px] truncate" title={adv.notes}>
+                              {adv.notes || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {deletingAdvanceId === adv.id ? (
+                                <div className="flex items-center justify-center gap-1.5 animate-fade-in">
+                                  <button
+                                    onClick={async () => {
+                                      await onDeleteHotelAdvance(adv.id);
+                                      setDeletingAdvanceId(null);
+                                    }}
+                                    className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingAdvanceId(null)}
+                                    className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-medium cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => handleStartEditAdvance(adv)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded-md transition cursor-pointer"
+                                    title="Edit advance (change amount, hotel name, date, or paid by)"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeletingAdvanceId(adv.id)}
+                                    className="p-1 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
+                                    title="Delete hotel advance"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
               )}

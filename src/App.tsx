@@ -984,6 +984,14 @@ export default function App() {
     }
   };
 
+  const handleUpdateHotelAdvance = async (ha: HotelAdvance) => {
+    await putItem('hotel_advances', ha);
+    setHotelAdvances(prev => prev.map(item => item.id === ha.id ? ha : item));
+    if (navigator.onLine) {
+      triggerSync('Auto-sync: Updated hotel advance');
+    }
+  };
+
   const handleDeleteHotelAdvance = async (id: string) => {
     await deleteItem('hotel_advances', id);
     setHotelAdvances(prev => prev.filter(item => item.id !== id));
@@ -1710,6 +1718,7 @@ export default function App() {
               foodLogs={foodLogs}
               payers={payers}
               onAddHotelAdvance={handleAddHotelAdvance}
+              onUpdateHotelAdvance={handleUpdateHotelAdvance}
               onDeleteHotelAdvance={handleDeleteHotelAdvance}
               onAddFoodLog={handleAddFoodLog}
               onUpdateFoodLog={handleUpdateFoodLog}
