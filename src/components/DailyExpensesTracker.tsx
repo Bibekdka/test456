@@ -553,10 +553,7 @@ export default function DailyExpensesTracker({
 
               {/* Payer/Paying Officer & Partner Help */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Disbursed/Paid By (Payer / Partner) *</label>
-                  <span className="text-[9px] text-indigo-600 font-bold">Includes Labour Registry</span>
-                </div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Disbursed/Paid By (Payer / Cashier) *</label>
                 
                 <select
                   required
@@ -574,7 +571,7 @@ export default function DailyExpensesTracker({
                   }}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-slate-900 font-semibold"
                 >
-                  <option value="">-- Choose Payer / Project Member --</option>
+                  <option value="">-- Choose Disbursing Payer / Cashier --</option>
                   
                   {payers && payers.length > 0 && (
                     <optgroup label="🏢 Registered Payers & Financial Partners">
@@ -587,62 +584,120 @@ export default function DailyExpensesTracker({
                   )}
 
                   {labours && labours.length > 0 && (
-                    <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                    <optgroup label="👷 Project Members & Labour Registry">
                       {labours.map((l) => (
-                        <option key={`lab_${l.id}`} value={l.name}>
-                          {l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''} {(l.contact || l.phone) ? `• 📞 ${l.contact || l.phone}` : ''}
+                        <option key={`disb_lab_${l.id}`} value={l.name}>
+                          {l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''}
                         </option>
                       ))}
                     </optgroup>
                   )}
                 </select>
 
-                {/* Quick Selection Chips from Labour Registry */}
-                {labours && labours.length > 0 && (
-                  <div className="pt-1">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase block mb-1">Quick Select Member Present in Project:</span>
-                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                      {labours.slice(0, 10).map((l) => (
-                        <button
-                          key={`chip_${l.id}`}
-                          type="button"
-                          onClick={() => {
-                            setSelectedPayerId(l.name);
-                            if (l.contact || l.phone) setPartnerPhone(l.contact || l.phone || '');
-                          }}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border transition cursor-pointer ${
-                            selectedPayerId === l.name || selectedPayerId === l.id
-                              ? 'bg-indigo-600 text-white border-indigo-700'
-                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          👤 {l.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-1 flex flex-col gap-1.5">
-                  <label className="inline-flex items-center gap-1.5 text-xs text-amber-800 font-bold cursor-pointer">
+                {/* 🤝 Dedicated Partner Help / Financial Support Section */}
+                <div className="mt-2.5 p-3 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-xl space-y-2.5">
+                  <label className="inline-flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300 font-extrabold cursor-pointer">
                     <input
                       type="checkbox"
                       checked={isPartnerHelp}
-                      onChange={(e) => setIsPartnerHelp(e.target.checked)}
-                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setIsPartnerHelp(checked);
+                      }}
+                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
                     />
-                    <span>🤝 Partner Help / Financial Support</span>
+                    <span>🤝 Partner Help / Financial Support Provided</span>
                   </label>
 
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      placeholder="Partner / Payer Phone Number"
-                      value={partnerPhone}
-                      onChange={(e) => setPartnerPhone(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                    />
-                  </div>
+                  {isPartnerHelp && (
+                    <div className="space-y-2.5 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Select Supporting Partner / Member Present in Project (Basanta, BDK, Singra, Deben, etc.) *
+                        </label>
+                        <select
+                          value={selectedPayerId}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedPayerId(val);
+                            const foundPayer = payers.find(p => p.id === val || p.name === val);
+                            const foundLabour = labours.find(l => l.id === val || l.name === val);
+                            if (foundPayer?.phone) {
+                              setPartnerPhone(foundPayer.phone);
+                            } else if (foundLabour?.contact || foundLabour?.phone) {
+                              setPartnerPhone(foundLabour.contact || foundLabour.phone || '');
+                            }
+                          }}
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          <option value="">-- Choose Member / Partner Who Gave Financial Help --</option>
+                          {labours && labours.length > 0 && (
+                            <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                              {labours.map((l) => (
+                                <option key={`phelp_lab_${l.id}`} value={l.name}>
+                                  {l.name} {l.role || l.category ? `• ${String(l.role || l.category).toUpperCase()}` : ''} {(l.contact || l.phone) ? `(📞 ${l.contact || l.phone})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {payers && payers.length > 0 && (
+                            <optgroup label="🏢 Registered Financial Payers & Partners">
+                              {payers.map((p) => (
+                                <option key={`phelp_payer_${p.id}`} value={p.id}>
+                                  {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Quick Select Member Chips inside Partner Help */}
+                      {labours && labours.length > 0 && (
+                        <div>
+                          <span className="text-[9px] font-extrabold text-amber-800 dark:text-amber-400 uppercase block mb-1">
+                            Quick Select Member Present in Project:
+                          </span>
+                          <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                            {labours.map((l) => (
+                              <button
+                                key={`phelp_chip_${l.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setIsPartnerHelp(true);
+                                  setSelectedPayerId(l.name);
+                                  if (l.contact || l.phone) setPartnerPhone(l.contact || l.phone || '');
+                                }}
+                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${
+                                  selectedPayerId === l.name || selectedPayerId === l.id
+                                    ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
+                                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                                }`}
+                              >
+                                <span>👤 {l.name}</span>
+                                {(l.role || l.category) && (
+                                  <span className="text-[8px] opacity-75 font-normal">({l.role || l.category})</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Partner Phone / Contact Number
+                        </label>
+                        <input
+                          type="tel"
+                          placeholder="Partner Phone Number"
+                          value={partnerPhone}
+                          onChange={(e) => setPartnerPhone(e.target.value)}
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono text-slate-800 dark:text-slate-200"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

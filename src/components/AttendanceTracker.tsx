@@ -1151,7 +1151,7 @@ export default function AttendanceTracker({
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Paid By & Partner Help</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Paid By (Primary Disburser / Cashier)</label>
                 <select
                   value={advPaidBy}
                   onChange={(e) => {
@@ -1164,7 +1164,7 @@ export default function AttendanceTracker({
                   }}
                   className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1.5 text-xs focus:outline-none font-semibold"
                 >
-                  <option value="">Select Disbursed By Payer / Member</option>
+                  <option value="">Select Disbursed By Payer / Cashier</option>
                   {payers && payers.length > 0 && (
                     <optgroup label="🏢 Registered Financial Payers">
                       {payers.map(p => (
@@ -1173,30 +1173,107 @@ export default function AttendanceTracker({
                     </optgroup>
                   )}
                   {labours && labours.length > 0 && (
-                    <optgroup label="👷 Labour Registry Members (Basanta, BDK, Singra, Deben, etc.)">
+                    <optgroup label="👷 Labour Registry Members">
                       {labours.map(l => (
-                        <option key={`adv_lab_${l.id}`} value={l.name}>{l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''} {(l.contact || l.phone) ? `• 📞 ${l.contact || l.phone}` : ''}</option>
+                        <option key={`adv_lab_${l.id}`} value={l.name}>{l.name} {l.role || l.category ? `(${String(l.role || l.category).toUpperCase()})` : ''}</option>
                       ))}
                     </optgroup>
                   )}
                 </select>
-                <div className="pt-1 flex flex-col gap-1">
-                  <label className="inline-flex items-center gap-1.5 text-[11px] text-amber-800 font-bold cursor-pointer">
+
+                {/* Dedicated Partner Help / Financial Support Box for Advances */}
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-amber-900 font-extrabold cursor-pointer">
                     <input
                       type="checkbox"
                       checked={advIsPartnerHelp}
                       onChange={(e) => setAdvIsPartnerHelp(e.target.checked)}
-                      className="rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
                     />
-                    <span>Partner Help / Support</span>
+                    <span>🤝 Partner Help / Financial Support Provided</span>
                   </label>
-                  <input
-                    type="tel"
-                    placeholder="Phone Number"
-                    value={advPartnerPhone}
-                    onChange={(e) => setAdvPartnerPhone(e.target.value)}
-                    className="w-full border border-slate-200 bg-white rounded-lg px-2 py-1 text-xs focus:outline-none font-mono"
-                  />
+
+                  {advIsPartnerHelp && (
+                    <div className="space-y-2 pt-1 border-t border-amber-200/80">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-amber-800 uppercase tracking-wider mb-1">
+                          Select Member / Partner Who Gave Financial Help *
+                        </label>
+                        <select
+                          value={advPaidBy}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAdvPaidBy(val);
+                            const pObj = payers.find(p => p.id === val || p.name === val);
+                            const lObj = labours.find(l => l.id === val || l.name === val);
+                            if (pObj?.phone) setAdvPartnerPhone(pObj.phone);
+                            else if (lObj?.contact || lObj?.phone) setAdvPartnerPhone(lObj.contact || lObj.phone || '');
+                          }}
+                          className="w-full border border-amber-300 bg-white rounded-lg px-2 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        >
+                          <option value="">-- Choose Supporting Member (Basanta, BDK, Singra, Deben, etc.) --</option>
+                          {labours && labours.length > 0 && (
+                            <optgroup label="👷 Project Members & Labour Registry (Basanta, BDK, Singra, Deben, etc.)">
+                              {labours.map(l => (
+                                <option key={`phelp_adv_lab_${l.id}`} value={l.name}>
+                                  {l.name} {l.role || l.category ? `• ${String(l.role || l.category).toUpperCase()}` : ''} {(l.contact || l.phone) ? `(📞 ${l.contact || l.phone})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {payers && payers.length > 0 && (
+                            <optgroup label="🏢 Registered Financial Payers & Partners">
+                              {payers.map(p => (
+                                <option key={`phelp_adv_payer_${p.id}`} value={p.name}>
+                                  {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      {/* Quick Select Member Chips */}
+                      {labours && labours.length > 0 && (
+                        <div>
+                          <span className="text-[9px] font-extrabold text-amber-800 uppercase block mb-1">
+                            Quick Pick Member Present in Project:
+                          </span>
+                          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                            {labours.map((l) => (
+                              <button
+                                key={`adv_pchip_${l.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setAdvIsPartnerHelp(true);
+                                  setAdvPaidBy(l.name);
+                                  if (l.contact || l.phone) setAdvPartnerPhone(l.contact || l.phone || '');
+                                }}
+                                className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${
+                                  advPaidBy === l.name
+                                    ? 'bg-amber-600 text-white border-amber-700'
+                                    : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100'
+                                }`}
+                              >
+                                <span>👤 {l.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-amber-800 uppercase mb-1">Phone Number</label>
+                        <input
+                          type="tel"
+                          placeholder="Partner Phone Number"
+                          value={advPartnerPhone}
+                          onChange={(e) => setAdvPartnerPhone(e.target.value)}
+                          className="w-full border border-amber-300 bg-white rounded-lg px-2 py-1 text-xs focus:outline-none font-mono"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
