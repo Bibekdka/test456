@@ -423,12 +423,12 @@ export default function Dashboard({
         const p = getOrCreatePayer(adv.paidBy, undefined, adv.partnerPhone);
         if (p) {
           const advContrib = adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount;
-          p.totalInvested += adv.amount;
-          p.advancesTotal += adv.amount;
+          p.totalInvested += advContrib;
+          p.advancesTotal += advContrib;
           if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(adv.projectId) || 0;
-          p.projectAmounts.set(adv.projectId, curr + adv.amount);
+          p.projectAmounts.set(adv.projectId, curr + advContrib);
         }
       }
     });
@@ -454,12 +454,12 @@ export default function Dashboard({
         const p = getOrCreatePayer(exp.payerId, undefined, exp.partnerPhone);
         if (p) {
           const expContrib = exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount;
-          p.totalInvested += exp.amount;
-          p.expensesTotal += exp.amount;
+          p.totalInvested += expContrib;
+          p.expensesTotal += expContrib;
           if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(exp.projectId) || 0;
-          p.projectAmounts.set(exp.projectId, curr + exp.amount);
+          p.projectAmounts.set(exp.projectId, curr + expContrib);
         }
       }
     });
@@ -471,12 +471,12 @@ export default function Dashboard({
         const p = getOrCreatePayer(paidBy, undefined, ha.partnerPhone);
         if (p) {
           const haContrib = ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount;
-          p.totalInvested += ha.amount;
-          p.hotelTotal += ha.amount;
+          p.totalInvested += haContrib;
+          p.hotelTotal += haContrib;
           if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(ha.projectId) || 0;
-          p.projectAmounts.set(ha.projectId, curr + ha.amount);
+          p.projectAmounts.set(ha.projectId, curr + haContrib);
         }
       }
     });
@@ -488,12 +488,12 @@ export default function Dashboard({
         const p = getOrCreatePayer(paidBy, undefined, m.partnerPhone);
         if (p) {
           const mContrib = m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost;
-          p.totalInvested += m.cost;
-          p.materialsTotal += m.cost;
+          p.totalInvested += mContrib;
+          p.materialsTotal += mContrib;
           if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
           p.transactionCount += 1;
           const curr = p.projectAmounts.get(m.projectId) || 0;
-          p.projectAmounts.set(m.projectId, curr + m.cost);
+          p.projectAmounts.set(m.projectId, curr + mContrib);
         }
       }
     });

@@ -91,6 +91,7 @@ export default function PayerManager({
   const [searchTerm, setSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [expandedPayerId, setExpandedPayerId] = useState<string | null>(null);
+  const [hoveredBreakdownPayerId, setHoveredBreakdownPayerId] = useState<string | null>(null);
 
   // Form Modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -200,11 +201,12 @@ export default function PayerManager({
       if (adv.paidBy) {
         const entry = getOrCreateEntry(adv.paidBy);
         if (entry) {
-          entry.totalDisbursed += adv.amount;
-          entry.advancesTotal += adv.amount;
+          const actualAmount = adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount;
+          entry.totalDisbursed += actualAmount;
+          entry.advancesTotal += actualAmount;
           entry.transactionCount += 1;
           const curr = entry.projectAmounts.get(adv.projectId) || 0;
-          entry.projectAmounts.set(adv.projectId, curr + adv.amount);
+          entry.projectAmounts.set(adv.projectId, curr + actualAmount);
 
           entry.transactions.push({
             id: adv.id,
@@ -212,8 +214,8 @@ export default function PayerManager({
             category: 'Labour Advance',
             projectId: adv.projectId,
             projectName: getProjectName(adv.projectId),
-            description: adv.description || 'Labour Micro Advance',
-            amount: adv.amount
+            description: `${adv.description || 'Labour Micro Advance'}${adv.isPartnerHelp ? ' (🤝 Partner Support)' : ''}`,
+            amount: actualAmount
           });
         }
       }
@@ -249,11 +251,12 @@ export default function PayerManager({
       if (exp.payerId) {
         const entry = getOrCreateEntry(exp.payerId);
         if (entry) {
-          entry.totalDisbursed += exp.amount;
-          entry.expensesTotal += exp.amount;
+          const actualAmount = exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount;
+          entry.totalDisbursed += actualAmount;
+          entry.expensesTotal += actualAmount;
           entry.transactionCount += 1;
           const curr = entry.projectAmounts.get(exp.projectId) || 0;
-          entry.projectAmounts.set(exp.projectId, curr + exp.amount);
+          entry.projectAmounts.set(exp.projectId, curr + actualAmount);
 
           entry.transactions.push({
             id: exp.id,
@@ -261,8 +264,8 @@ export default function PayerManager({
             category: 'Daily Expense',
             projectId: exp.projectId,
             projectName: getProjectName(exp.projectId),
-            description: exp.description || `Misc Expense (${exp.subCategory})`,
-            amount: exp.amount
+            description: `${exp.description || `Misc Expense (${exp.subCategory})`}${exp.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${exp.amount.toLocaleString()})` : ''}`,
+            amount: actualAmount
           });
         }
       }
@@ -274,11 +277,12 @@ export default function PayerManager({
       if (paidBy) {
         const entry = getOrCreateEntry(paidBy);
         if (entry) {
-          entry.totalDisbursed += ha.amount;
-          entry.hotelTotal += ha.amount;
+          const actualAmount = ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount;
+          entry.totalDisbursed += actualAmount;
+          entry.hotelTotal += actualAmount;
           entry.transactionCount += 1;
           const curr = entry.projectAmounts.get(ha.projectId) || 0;
-          entry.projectAmounts.set(ha.projectId, curr + ha.amount);
+          entry.projectAmounts.set(ha.projectId, curr + actualAmount);
 
           entry.transactions.push({
             id: ha.id,
@@ -286,8 +290,8 @@ export default function PayerManager({
             category: 'Hotel Food',
             projectId: ha.projectId,
             projectName: getProjectName(ha.projectId),
-            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}`,
-            amount: ha.amount
+            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}${ha.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${ha.amount.toLocaleString()})` : ''}`,
+            amount: actualAmount
           });
         }
       }
@@ -299,11 +303,12 @@ export default function PayerManager({
       if (paidBy) {
         const entry = getOrCreateEntry(paidBy);
         if (entry) {
-          entry.totalDisbursed += m.cost;
-          entry.materialsTotal += m.cost;
+          const actualAmount = m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost;
+          entry.totalDisbursed += actualAmount;
+          entry.materialsTotal += actualAmount;
           entry.transactionCount += 1;
           const curr = entry.projectAmounts.get(m.projectId) || 0;
-          entry.projectAmounts.set(m.projectId, curr + m.cost);
+          entry.projectAmounts.set(m.projectId, curr + actualAmount);
 
           entry.transactions.push({
             id: m.id,
@@ -311,8 +316,8 @@ export default function PayerManager({
             category: 'Material Stock',
             projectId: m.projectId,
             projectName: getProjectName(m.projectId),
-            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}`,
-            amount: m.cost
+            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}${m.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${m.cost.toLocaleString()})` : ''}`,
+            amount: actualAmount
           });
         }
       }
@@ -418,12 +423,15 @@ export default function PayerManager({
   const pieChartData = useMemo(() => {
     const activeFinancials = filteredPayers.map(p => {
       let amount = p.totalDisbursed;
+      let txs = p.transactions;
       if (projectFilter !== 'all') {
         amount = p.projectAmounts.get(projectFilter) || 0;
+        txs = txs.filter(t => t.projectId === projectFilter);
       }
       return {
         ...p,
-        disbursedAmount: amount
+        disbursedAmount: amount,
+        filteredTransactions: txs
       };
     }).filter(p => p.disbursedAmount > 0);
 
@@ -433,18 +441,48 @@ export default function PayerManager({
 
     const data = activeFinancials.map((p, idx) => {
       const percentage = (p.disbursedAmount / total) * 100;
+
+      // Group by site
+      const siteBreakdown: Array<{ name: string; amount: number; percentage: number }> = [];
+      p.projectAmounts.forEach((amt, pId) => {
+        if (projectFilter !== 'all' && pId !== projectFilter) return;
+        if (amt > 0) {
+          const prj = projects.find(pr => pr.id === pId);
+          siteBreakdown.push({
+            name: prj?.name || 'Main Site',
+            amount: amt,
+            percentage: Number(((amt / p.disbursedAmount) * 100).toFixed(1))
+          });
+        }
+      });
+      siteBreakdown.sort((a, b) => b.amount - a.amount);
+
+      // Group by category
+      const categoryBreakdown: Array<{ name: string; amount: number; percentage: number }> = [];
+      if (p.expensesTotal > 0) categoryBreakdown.push({ name: 'Daily Expenses', amount: p.expensesTotal, percentage: Number(((p.expensesTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.advancesTotal > 0) categoryBreakdown.push({ name: 'Labour Advances', amount: p.advancesTotal, percentage: Number(((p.advancesTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.paymentsTotal > 0) categoryBreakdown.push({ name: 'Wage Settlements', amount: p.paymentsTotal, percentage: Number(((p.paymentsTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.materialsTotal > 0) categoryBreakdown.push({ name: 'Material Stock', amount: p.materialsTotal, percentage: Number(((p.materialsTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.hotelTotal > 0) categoryBreakdown.push({ name: 'Hotel & Food', amount: p.hotelTotal, percentage: Number(((p.hotelTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.gstTotal > 0) categoryBreakdown.push({ name: 'GST Tax', amount: p.gstTotal, percentage: Number(((p.gstTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      if (p.pettyCashTotal > 0) categoryBreakdown.push({ name: 'Petty Cash', amount: p.pettyCashTotal, percentage: Number(((p.pettyCashTotal / p.disbursedAmount) * 100).toFixed(1)) });
+      categoryBreakdown.sort((a, b) => b.amount - a.amount);
+
       return {
         id: p.id,
         name: p.name,
         role: p.role || 'Authorized Payer',
         value: p.disbursedAmount,
         percentage: Number(percentage.toFixed(1)),
-        color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length]
+        color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length],
+        siteBreakdown,
+        categoryBreakdown,
+        recentTransactions: p.filteredTransactions.slice(0, 6)
       };
     });
 
     return { data, total };
-  }, [filteredPayers, projectFilter]);
+  }, [filteredPayers, projectFilter, projects]);
 
   // Analytics View Mode & Sorting State
   const [analyticsViewMode, setAnalyticsViewMode] = useState<'all' | 'pie' | 'trend' | 'comparison'>('all');
@@ -1271,16 +1309,54 @@ export default function PayerManager({
                         if (active && payload && payload.length) {
                           const data = payload[0].payload;
                           return (
-                            <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs space-y-1">
-                              <div className="font-bold text-indigo-300 flex items-center gap-1.5">
-                                <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: data.color }} />
-                                <span>{data.name}</span>
+                            <div className="bg-slate-900 text-white p-3.5 rounded-2xl shadow-2xl border border-slate-700 text-xs space-y-2 max-w-[300px]">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2 gap-2">
+                                <div className="font-bold text-indigo-300 flex items-center gap-1.5 min-w-0">
+                                  <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: data.color }} />
+                                  <span className="truncate">{data.name}</span>
+                                </div>
+                                <span className="text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 px-2 py-0.5 rounded shrink-0">
+                                  {data.percentage}% Share
+                                </span>
                               </div>
-                              {data.role && <div className="text-[10px] text-slate-400 font-semibold">{data.role}</div>}
-                              <div className="font-mono text-emerald-400 font-bold text-sm">₹{data.value.toLocaleString()}</div>
-                              <div className="text-[10px] text-slate-300 font-medium">
-                                Contributed <strong className="text-white font-bold">{data.percentage}%</strong> of total site expenses
+
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 text-[10px]">Total Outlay Invested:</span>
+                                <span className="font-mono text-emerald-400 font-extrabold text-sm">₹{data.value.toLocaleString()}</span>
                               </div>
+
+                              {/* SPENDING BY CHANNEL */}
+                              {data.categoryBreakdown && data.categoryBreakdown.length > 0 && (
+                                <div className="space-y-1 pt-1.5 border-t border-slate-800">
+                                  <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Spending Channels:</div>
+                                  <div className="space-y-1">
+                                    {data.categoryBreakdown.map((cat: any, i: number) => (
+                                      <div key={i} className="flex items-center justify-between text-[11px] font-mono">
+                                        <span className="text-slate-300 truncate max-w-[160px]">{cat.name}</span>
+                                        <span className="text-white font-bold">₹{cat.amount.toLocaleString()}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* RECENT OUTLAYS LIST */}
+                              {data.recentTransactions && data.recentTransactions.length > 0 && (
+                                <div className="space-y-1 pt-1.5 border-t border-slate-800">
+                                  <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Recent Expenditures:</div>
+                                  <div className="space-y-1 max-h-[110px] overflow-y-auto pr-1">
+                                    {data.recentTransactions.slice(0, 4).map((tx: any, i: number) => (
+                                      <div key={i} className="text-[10px] bg-slate-800/80 p-1.5 rounded-lg border border-slate-700/60 space-y-0.5">
+                                        <div className="flex items-center justify-between text-slate-300 font-mono">
+                                          <span className="text-[9px] text-slate-400">{tx.date}</span>
+                                          <span className="text-emerald-400 font-bold">₹{tx.amount.toLocaleString()}</span>
+                                        </div>
+                                        <div className="text-white font-medium truncate" title={tx.description}>{tx.description}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         }
@@ -1300,44 +1376,101 @@ export default function PayerManager({
               </div>
 
               {/* PERCENTAGE LIST / BREAKDOWN PROGRESS BARS */}
-              <div className="md:col-span-7 space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                {pieChartData.data.map((entry) => (
-                  <div 
-                    key={entry.id}
-                    className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5 hover:border-indigo-200 dark:hover:border-indigo-800 transition"
-                  >
-                    <div className="flex items-center justify-between text-xs gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-3 h-3 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: entry.color }} />
-                        <span className="font-bold text-slate-900 dark:text-white truncate">{entry.name}</span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline truncate">
-                          ({entry.role})
-                        </span>
+              <div className="md:col-span-7 space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
+                {pieChartData.data.map((entry) => {
+                  const isHovered = hoveredBreakdownPayerId === entry.id;
+
+                  return (
+                    <div 
+                      key={entry.id}
+                      onMouseEnter={() => setHoveredBreakdownPayerId(entry.id)}
+                      onMouseLeave={() => setHoveredBreakdownPayerId(null)}
+                      className={`p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border transition-all duration-200 cursor-pointer ${
+                        isHovered 
+                          ? 'border-indigo-400 dark:border-indigo-600 shadow-md ring-2 ring-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/20' 
+                          : 'border-slate-100 dark:border-slate-800 hover:border-indigo-200 dark:hover:border-indigo-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-3 h-3 rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: entry.color }} />
+                          <span className="font-bold text-slate-900 dark:text-white truncate">{entry.name}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline truncate">
+                            ({entry.role})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 font-mono shrink-0">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">₹{entry.value.toLocaleString()}</span>
+                          <span 
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white shadow-2xs" 
+                            style={{ backgroundColor: entry.color }}
+                          >
+                            {entry.percentage}%
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 font-mono shrink-0">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">₹{entry.value.toLocaleString()}</span>
-                        <span 
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white shadow-2xs" 
-                          style={{ backgroundColor: entry.color }}
-                        >
-                          {entry.percentage}%
-                        </span>
+                      {/* PROGRESS BAR */}
+                      <div className="w-full bg-slate-200 dark:bg-slate-700/60 h-2 rounded-full overflow-hidden mt-1.5">
+                        <div 
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${Math.max(entry.percentage, 2)}%`, 
+                            backgroundColor: entry.color 
+                          }}
+                        />
                       </div>
-                    </div>
 
-                    {/* PROGRESS BAR */}
-                    <div className="w-full bg-slate-200 dark:bg-slate-700/60 h-2 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ 
-                          width: `${Math.max(entry.percentage, 2)}%`, 
-                          backgroundColor: entry.color 
-                        }}
-                      />
+                      {/* HOVER DETAILS POP-OUT CARD */}
+                      {isHovered && (
+                        <div className="mt-3 pt-2.5 border-t border-indigo-200/60 dark:border-indigo-800/60 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+                          <div className="flex items-center justify-between text-[11px] font-bold text-indigo-900 dark:text-indigo-300">
+                            <span>Where {entry.name} Spent Money & How Much:</span>
+                            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{entry.recentTransactions.length} transaction(s)</span>
+                          </div>
+
+                          {/* CATEGORY BREAKDOWN TAGS */}
+                          {entry.categoryBreakdown.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {entry.categoryBreakdown.map((cat, idx) => (
+                                <span key={idx} className="inline-flex items-center gap-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shadow-2xs">
+                                  <span className="text-slate-400">{cat.name}:</span>
+                                  <span className="text-emerald-700 dark:text-emerald-400">₹{cat.amount.toLocaleString()}</span>
+                                  <span className="text-[9px] text-slate-400">({cat.percentage}%)</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* ITEMIZED TRANSACTIONS SUMMARY */}
+                          {entry.recentTransactions.length > 0 && (
+                            <div className="space-y-1 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 max-h-[140px] overflow-y-auto">
+                              <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-1">Detailed Outlays Log:</div>
+                              {entry.recentTransactions.map((tx, idx) => (
+                                <div key={idx} className="flex items-center justify-between text-[10px] py-1 border-b border-slate-100 dark:border-slate-800/80 last:border-0 font-medium">
+                                  <div className="min-w-0 pr-2">
+                                    <div className="text-slate-800 dark:text-slate-200 font-bold truncate">{tx.description}</div>
+                                    <div className="text-[9px] text-slate-400 font-mono flex items-center gap-2">
+                                      <span>{tx.date}</span>
+                                      <span>•</span>
+                                      <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{tx.category}</span>
+                                      <span>•</span>
+                                      <span>{tx.projectName}</span>
+                                    </div>
+                                  </div>
+                                  <div className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs shrink-0">
+                                    ₹{tx.amount.toLocaleString()}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
