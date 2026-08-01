@@ -156,6 +156,31 @@ export interface Payer extends BaseEntity {
   notes?: string;
 }
 
+export interface PartnerDeal extends BaseEntity {
+  id: string;
+  projectId?: string; // Construction site ID or 'all' for general inter-partner deal
+  lenderPayerId: string; // ID or Name of partner giving/lending money (e.g. Deben)
+  borrowerPayerId: string; // ID or Name of partner receiving/helped by money (e.g. BDK)
+  amount: number; // Principal deal amount lent
+  date: string; // YYYY-MM-DD
+  purpose: string; // Purpose / reason for financial support (e.g. "Site material shortfall support")
+  status: 'pending' | 'partially_settled' | 'settled';
+  notes?: string;
+  receiptImage?: string; // Base64 data URI of transfer receipt / UPI proof
+  receiptImageName?: string;
+}
+
+export interface PartnerSettlement extends BaseEntity {
+  id: string;
+  dealId: string; // Reference to PartnerDeal ID
+  date: string; // YYYY-MM-DD
+  amountPaid: number; // Repayment / Settlement amount
+  paymentMode: 'cash' | 'upi' | 'bank_transfer' | 'other';
+  notes?: string;
+  receiptImage?: string;
+  receiptImageName?: string;
+}
+
 export interface Payment extends BaseEntity {
   id: string;
   labourId: string;

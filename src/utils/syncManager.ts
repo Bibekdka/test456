@@ -30,7 +30,8 @@ export async function performIncrementalSync(): Promise<SyncResult> {
     'projects', 'labours', 'attendance', 'advances', 'payments',
     'materials', 'hotel_advances', 'food_logs', 'gst_records',
     'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses',
-    'project_documents', 'project_phases', 'petty_cash_entries'
+    'project_documents', 'project_phases', 'petty_cash_entries',
+    'partner_deals', 'partner_settlements'
   ];
 
   const clientChanges: Record<string, any[]> = {};
@@ -126,7 +127,8 @@ export async function performFullSync(): Promise<SyncResult> {
     'projects', 'labours', 'attendance', 'advances', 'payments',
     'materials', 'hotel_advances', 'food_logs', 'gst_records',
     'payers', 'site_diaries', 'delay_weather_logs', 'daily_expenses',
-    'project_documents', 'project_phases', 'petty_cash_entries'
+    'project_documents', 'project_phases', 'petty_cash_entries',
+    'partner_deals', 'partner_settlements'
   ];
 
   const fullData: Record<string, any[]> = {};

@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, PartnerDeal, PartnerSettlement, SiteDiaryEntry, DelayWeatherLog, DailyExpense } from './types';
 
 const DB_NAME = 'ConstructionManagerDB';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 
 export function initDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -35,6 +35,8 @@ export function initDB(): Promise<IDBDatabase> {
         'food_logs',
         'gst_records',
         'payers',
+        'partner_deals',
+        'partner_settlements',
         'site_diaries',
         'delay_weather_logs',
         'daily_expenses',

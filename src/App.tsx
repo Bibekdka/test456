@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, SiteDiaryEntry, DelayWeatherLog, DailyExpense, ProjectDocument, ProjectPhase, PettyCashEntry } from './types';
+import { Project, Labour, Attendance, Advance, Payment, Material, HotelAdvance, FoodLog, GstRecord, Payer, PartnerDeal, PartnerSettlement, SiteDiaryEntry, DelayWeatherLog, DailyExpense, ProjectDocument, ProjectPhase, PettyCashEntry } from './types';
 import {
   initDB,
   getAllItems,
@@ -69,6 +69,7 @@ import BackupPromptBanner from './components/BackupPromptBanner';
 import GanttPhaseTimeline from './components/GanttPhaseTimeline';
 import PettyCashRegister from './components/PettyCashRegister';
 import PayerManager from './components/PayerManager';
+import PartnerFinanceManager from './components/PartnerFinanceManager';
 
 import {
   Briefcase,
@@ -100,10 +101,11 @@ import {
   Layers,
   Wallet,
   CloudOff,
-  UserCheck
+  UserCheck,
+  Handshake
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses' | 'phases' | 'pettycash' | 'payers';
+type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses' | 'phases' | 'pettycash' | 'payers' | 'partner_finance';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -126,6 +128,8 @@ export default function App() {
   const [projectDocuments, setProjectDocuments] = useState<ProjectDocument[]>([]);
   const [projectPhases, setProjectPhases] = useState<ProjectPhase[]>([]);
   const [pettyCashEntries, setPettyCashEntries] = useState<PettyCashEntry[]>([]);
+  const [partnerDeals, setPartnerDeals] = useState<PartnerDeal[]>([]);
+  const [partnerSettlements, setPartnerSettlements] = useState<PartnerSettlement[]>([]);
   const [isWeatherFetching, setIsWeatherFetching] = useState<boolean>(false);
 
   // Selected Active Project
@@ -192,6 +196,8 @@ export default function App() {
       foodLogs,
       payers,
       dailyExpenses,
+      partnerDeals,
+      partnerSettlements,
       foodCalculationStartDate
     };
 
@@ -325,6 +331,18 @@ export default function App() {
       } catch (err) {
         console.warn('petty_cash_entries store might not exist yet', err);
       }
+      let partnerDealsList: PartnerDeal[] = [];
+      try {
+        partnerDealsList = await getAllItems<PartnerDeal>('partner_deals');
+      } catch (err) {
+        console.warn('partner_deals store might not exist yet', err);
+      }
+      let partnerSettlementsList: PartnerSettlement[] = [];
+      try {
+        partnerSettlementsList = await getAllItems<PartnerSettlement>('partner_settlements');
+      } catch (err) {
+        console.warn('partner_settlements store might not exist yet', err);
+      }
 
       // Try fetching from the server
       try {
@@ -352,6 +370,8 @@ export default function App() {
             const docRes = mergeStoreItems(docList, serverDb.project_documents || []);
             const phaseRes = mergeStoreItems(phaseList, serverDb.project_phases || []);
             const pettyCashRes = mergeStoreItems(pettyCashList, serverDb.petty_cash_entries || []);
+            const partnerDealsRes = mergeStoreItems(partnerDealsList, serverDb.partner_deals || []);
+            const partnerSettlementsRes = mergeStoreItems(partnerSettlementsList, serverDb.partner_settlements || []);
 
             // Clean up any attendance records before worker joined date
             const labourMap = new Map((lRes.merged as Labour[]).map(l => [l.id, l]));
@@ -379,6 +399,8 @@ export default function App() {
             docList = docRes.merged;
             phaseList = phaseRes.merged;
             pettyCashList = pettyCashRes.merged;
+            partnerDealsList = partnerDealsRes.merged;
+            partnerSettlementsList = partnerSettlementsRes.merged;
 
             // Persist merged stores into local IndexedDB while preserving timestamps
             await putItems('projects', pList, true);
@@ -397,6 +419,8 @@ export default function App() {
             await putItems('project_documents', docList, true);
             await putItems('project_phases', phaseList, true);
             await putItems('petty_cash_entries', pettyCashList, true);
+            await putItems('partner_deals', partnerDealsList, true);
+            await putItems('partner_settlements', partnerSettlementsList, true);
 
             const hasLocalNewerData = pRes.hasLocalChanges || lRes.hasLocalChanges || attRes.hasLocalChanges ||
               advRes.hasLocalChanges || payRes.hasLocalChanges || matRes.hasLocalChanges || haRes.hasLocalChanges ||
@@ -535,6 +559,8 @@ export default function App() {
         setProjectDocuments(remainingDocs);
         setProjectPhases(remainingPhases);
         setPettyCashEntries(remainingPettyCash);
+        setPartnerDeals(partnerDealsList);
+        setPartnerSettlements(partnerSettlementsList);
 
         if (remainingProjects.length > 0) {
           setActiveProjectId(remainingProjects[0].id);
@@ -558,6 +584,8 @@ export default function App() {
         setProjectDocuments(docList);
         setProjectPhases(phaseList);
         setPettyCashEntries(pettyCashList);
+        setPartnerDeals(partnerDealsList);
+        setPartnerSettlements(partnerSettlementsList);
 
         if (pList.length > 0) {
           setActiveProjectId(pList[0].id);
@@ -1180,6 +1208,89 @@ export default function App() {
   };
 
   // ----------------------------------------------------
+  // Partner Deal & Settlement operations
+  // ----------------------------------------------------
+  const handleAddPartnerDeal = async (deal: Omit<PartnerDeal, 'id'>) => {
+    const newDeal: PartnerDeal = {
+      ...deal,
+      id: generateId('deal')
+    };
+    await putItem('partner_deals', newDeal);
+    setPartnerDeals(prev => [...prev, newDeal]);
+    triggerSync('Auto-sync: Added partner financial deal');
+  };
+
+  const handleUpdatePartnerDeal = async (deal: PartnerDeal) => {
+    await putItem('partner_deals', deal);
+    setPartnerDeals(prev => prev.map(item => item.id === deal.id ? deal : item));
+    triggerSync('Auto-sync: Updated partner financial deal');
+  };
+
+  const handleDeletePartnerDeal = async (id: string) => {
+    await deleteItem('partner_deals', id);
+    setPartnerDeals(prev => prev.filter(item => item.id !== id));
+    const relatedSettlements = partnerSettlements.filter(s => s.dealId === id);
+    for (const s of relatedSettlements) {
+      await deleteItem('partner_settlements', s.id);
+    }
+    setPartnerSettlements(prev => prev.filter(s => s.dealId !== id));
+    triggerSync('Auto-sync: Deleted partner financial deal', true);
+  };
+
+  const handleAddPartnerSettlement = async (settlement: Omit<PartnerSettlement, 'id'>) => {
+    const newSettlement: PartnerSettlement = {
+      ...settlement,
+      id: generateId('ps')
+    };
+    await putItem('partner_settlements', newSettlement);
+    setPartnerSettlements(prev => [...prev, newSettlement]);
+
+    const deal = partnerDeals.find(d => d.id === settlement.dealId);
+    if (deal) {
+      const existingSettlements = partnerSettlements.filter(s => s.dealId === deal.id);
+      const totalSettled = existingSettlements.reduce((sum, s) => sum + s.amountPaid, 0) + settlement.amountPaid;
+      if (totalSettled >= deal.amount && deal.status !== 'settled') {
+        const updatedDeal: PartnerDeal = { ...deal, status: 'settled', updatedAt: Date.now() };
+        await putItem('partner_deals', updatedDeal);
+        setPartnerDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
+      } else if (totalSettled > 0 && deal.status === 'pending') {
+        const updatedDeal: PartnerDeal = { ...deal, status: 'partially_settled', updatedAt: Date.now() };
+        await putItem('partner_deals', updatedDeal);
+        setPartnerDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
+      }
+    }
+
+    triggerSync('Auto-sync: Added partner deal settlement');
+  };
+
+  const handleDeletePartnerSettlement = async (id: string) => {
+    const settlement = partnerSettlements.find(s => s.id === id);
+    await deleteItem('partner_settlements', id);
+    setPartnerSettlements(prev => prev.filter(item => item.id !== id));
+
+    if (settlement) {
+      const deal = partnerDeals.find(d => d.id === settlement.dealId);
+      if (deal) {
+        const remainingSettlements = partnerSettlements.filter(s => s.dealId === deal.id && s.id !== id);
+        const totalSettled = remainingSettlements.reduce((sum, s) => sum + s.amountPaid, 0);
+        let newStatus: 'pending' | 'partially_settled' | 'settled' = 'pending';
+        if (totalSettled >= deal.amount) {
+          newStatus = 'settled';
+        } else if (totalSettled > 0) {
+          newStatus = 'partially_settled';
+        }
+        if (deal.status !== newStatus) {
+          const updatedDeal: PartnerDeal = { ...deal, status: newStatus, updatedAt: Date.now() };
+          await putItem('partner_deals', updatedDeal);
+          setPartnerDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
+        }
+      }
+    }
+
+    triggerSync('Auto-sync: Deleted partner deal settlement', true);
+  };
+
+  // ----------------------------------------------------
   // Database backup import
   // ----------------------------------------------------
   const handleImportBackup = async (backupData: any) => {
@@ -1199,6 +1310,8 @@ export default function App() {
       await clearStore('delay_weather_logs');
       await clearStore('daily_expenses');
       await clearStore('payers');
+      await clearStore('partner_deals');
+      await clearStore('partner_settlements');
 
       // Key fallbacks for backwards compatibility and server schema compatibility
       const pList = backupData.projects || [];
@@ -1214,6 +1327,8 @@ export default function App() {
       const dwList = backupData.delayWeatherLogs || backupData.delay_weather_logs || [];
       const expList = backupData.dailyExpenses || backupData.daily_expenses || [];
       const payersList = backupData.payers || [];
+      const partnerDealsList = backupData.partnerDeals || backupData.partner_deals || [];
+      const partnerSettlementsList = backupData.partnerSettlements || backupData.partner_settlements || [];
 
       // Populate database using ultra-fast bulk operations
       await putItems('projects', pList);
@@ -1229,6 +1344,8 @@ export default function App() {
       await putItems('delay_weather_logs', dwList);
       await putItems('daily_expenses', expList);
       await putItems('payers', payersList);
+      await putItems('partner_deals', partnerDealsList);
+      await putItems('partner_settlements', partnerSettlementsList);
 
       // Reload state
       setProjects(pList);
@@ -1244,6 +1361,8 @@ export default function App() {
       setDelayWeatherLogs(dwList);
       setDailyExpenses(expList);
       setPayers(payersList);
+      setPartnerDeals(partnerDealsList);
+      setPartnerSettlements(partnerSettlementsList);
 
       if (backupData.foodCalculationStartDate) {
         setFoodCalculationStartDate(backupData.foodCalculationStartDate);
@@ -1282,6 +1401,8 @@ export default function App() {
       await clearStore('delay_weather_logs');
       await clearStore('daily_expenses');
       await clearStore('payers');
+      await clearStore('partner_deals');
+      await clearStore('partner_settlements');
 
       // Re-seed and load standard clean sample database
       await loadDatabase();
@@ -1319,6 +1440,7 @@ export default function App() {
     { id: 'expenses', label: 'Daily Expenses & Misc', icon: Receipt, iconColor: 'text-emerald-500', category: 'Costing & Food' },
     { id: 'gst', label: 'GST Invoices', icon: Percent, iconColor: 'text-violet-500', category: 'Costing & Food' },
     { id: 'payers', label: 'Payer Management', icon: UserCheck, iconColor: 'text-indigo-500', badge: payers.length.toString(), category: 'Costing & Food' },
+    { id: 'partner_finance', label: 'Partner Deals & Settlements', icon: Handshake, iconColor: 'text-amber-500 dark:text-amber-400', badge: partnerDeals.filter(d => d.status !== 'settled').length > 0 ? `${partnerDeals.filter(d => d.status !== 'settled').length} open` : partnerDeals.length.toString(), category: 'Costing & Food' },
   ];
 
   return (
@@ -1832,6 +1954,22 @@ export default function App() {
               onAddPayer={handleAddPayer}
               onUpdatePayer={handleUpdatePayer}
               onDeletePayer={handleDeletePayer}
+            />
+          )}
+
+          {activeTab === 'partner_finance' && (
+            <PartnerFinanceManager
+              partnerDeals={partnerDeals}
+              partnerSettlements={partnerSettlements}
+              payers={payers}
+              projects={projects}
+              activeProjectId={activeProjectId}
+              onAddDeal={handleAddPartnerDeal}
+              onUpdateDeal={handleUpdatePartnerDeal}
+              onDeleteDeal={handleDeletePartnerDeal}
+              onAddSettlement={handleAddPartnerSettlement}
+              onDeleteSettlement={handleDeletePartnerSettlement}
+              onAddPayer={handleAddPayer}
             />
           )}
         </main>

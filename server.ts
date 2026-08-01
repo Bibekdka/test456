@@ -34,7 +34,9 @@ const DatabaseSchema = z.object({
   daily_expenses: z.array(BaseEntitySchema).default([]),
   project_documents: z.array(BaseEntitySchema).default([]),
   project_phases: z.array(BaseEntitySchema).default([]),
-  petty_cash_entries: z.array(BaseEntitySchema).default([])
+  petty_cash_entries: z.array(BaseEntitySchema).default([]),
+  partner_deals: z.array(BaseEntitySchema).default([]),
+  partner_settlements: z.array(BaseEntitySchema).default([])
 });
 
 const DeltaSyncSchema = z.object({
@@ -68,7 +70,9 @@ function initializeServerDb() {
       daily_expenses: [],
       project_documents: [],
       project_phases: [],
-      petty_cash_entries: []
+      petty_cash_entries: [],
+      partner_deals: [],
+      partner_settlements: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialSchema, null, 2), 'utf-8');
   }
