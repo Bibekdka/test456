@@ -450,15 +450,31 @@ export default function PayerManager({
   const [analyticsViewMode, setAnalyticsViewMode] = useState<'all' | 'pie' | 'trend' | 'comparison'>('all');
   const [rankSortBy, setRankSortBy] = useState<'amount' | 'count' | 'avg'>('amount');
 
-  // Helper to parse date to Year-Month key and label
+  // Helper to safely format YYYY-MM-DD date strings without timezone shifts
+  const formatDateSafe = (dateStr: string) => {
+    if (!dateStr) return 'N/A';
+    const clean = dateStr.split('T')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      const [y, m, d] = parts;
+      if (y && m && d) {
+        return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+      }
+    }
+    return dateStr;
+  };
+
+  // Helper to parse date to Year-Month key and label safely without UTC shifts
   const getYearMonthInfo = (dateStr: string) => {
     if (!dateStr) return null;
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return null;
-    const yyyy = d.getFullYear();
-    const mm = d.getMonth();
+    const cleanDateStr = dateStr.split('T')[0];
+    const parts = cleanDateStr.split('-');
+    if (parts.length < 2) return null;
+    const yyyy = parseInt(parts[0], 10);
+    const mm = parseInt(parts[1], 10) - 1;
+    if (isNaN(yyyy) || isNaN(mm) || mm < 0 || mm > 11) return null;
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const label = `${monthNames[mm]} '${String(yyyy).slice(2)}`;
+    const label = `${monthNames[mm]} '${String(yyyy).slice(-2)}`;
     return {
       key: `${yyyy}-${String(mm + 1).padStart(2, '0')}`,
       label,
@@ -470,13 +486,18 @@ export default function PayerManager({
   const monthlyTrendData = useMemo(() => {
     const monthMap: Record<string, { key: string; label: string; sortVal: number; total: number; [payerName: string]: any }> = {};
     
-    // Active payers with non-zero disbursed amount
-    const activePayers = filteredPayers.filter(p => p.totalDisbursed > 0).map((p, idx) => ({
-      id: p.id,
-      name: p.name,
-      role: p.role,
-      color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length]
-    }));
+    // Active payers with non-zero disbursed amount for current site filter
+    const activePayers = filteredPayers
+      .filter(p => {
+        if (projectFilter === 'all') return p.totalDisbursed > 0;
+        return (p.projectAmounts.get(projectFilter) || 0) > 0;
+      })
+      .map((p, idx) => ({
+        id: p.id,
+        name: p.name,
+        role: p.role,
+        color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length]
+      }));
 
     filteredPayers.forEach(p => {
       let txs = p.transactions;
@@ -770,7 +791,7 @@ export default function PayerManager({
         startY += 4;
 
         const trxRows = allFilteredTransactions.map(t => [
-          t.date ? new Date(t.date).toLocaleDateString('en-IN') : 'N/A',
+          formatDateSafe(t.date),
           t.payerName,
           t.category,
           t.projectName,
@@ -863,6 +884,18 @@ export default function PayerManager({
       });
 
       const wsOverview = XLSX.utils.aoa_to_sheet(overviewData);
+      wsOverview['!cols'] = [
+        { wch: 8 },  // Rank
+        { wch: 22 }, // Name
+        { wch: 22 }, // Role
+        { wch: 15 }, // Phone
+        { wch: 20 }, // Total Outlay
+        { wch: 14 }, // Share %
+        { wch: 16 }, // Trx Count
+        { wch: 18 }, // Avg Ticket
+        { wch: 24 }, // Category
+        { wch: 22 }  // Top Cat Amt
+      ];
       XLSX.utils.book_append_sheet(wb, wsOverview, 'Executive Overview');
 
       // Sheet 2: Monthly Trends Matrix
@@ -885,6 +918,7 @@ export default function PayerManager({
         });
 
         const wsTrends = XLSX.utils.aoa_to_sheet(trendRows);
+        wsTrends['!cols'] = [{ wch: 14 }, { wch: 22 }, ...activePayerNames.map(() => ({ wch: 18 }))];
         XLSX.utils.book_append_sheet(wb, wsTrends, 'Monthly Trends');
       }
 
@@ -899,7 +933,7 @@ export default function PayerManager({
 
       allFilteredTransactions.forEach(t => {
         trxRows.push([
-          t.date ? new Date(t.date).toLocaleDateString('en-IN') : '',
+          formatDateSafe(t.date),
           t.payerName,
           t.category,
           t.projectName,
@@ -909,6 +943,7 @@ export default function PayerManager({
       });
 
       const wsTrx = XLSX.utils.aoa_to_sheet(trxRows);
+      wsTrx['!cols'] = [{ wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 22 }, { wch: 38 }, { wch: 18 }];
       XLSX.utils.book_append_sheet(wb, wsTrx, 'Itemized Ledger');
 
       const cleanProjectName = currentProjectName.replace(/[^a-zA-Z0-9]/g, '_');
@@ -2172,7 +2207,7 @@ export default function PayerManager({
               <tbody>
                 {allFilteredTransactions.map((t, idx) => (
                   <tr key={t.id + idx} className="border-b border-slate-200">
-                    <td className="p-1.5 border border-slate-300 font-mono">{t.date ? new Date(t.date).toLocaleDateString('en-IN') : 'N/A'}</td>
+                    <td className="p-1.5 border border-slate-300 font-mono">{formatDateSafe(t.date)}</td>
                     <td className="p-1.5 border border-slate-300 font-bold">{t.payerName}</td>
                     <td className="p-1.5 border border-slate-300">{t.category}</td>
                     <td className="p-1.5 border border-slate-300">{t.projectName}</td>
