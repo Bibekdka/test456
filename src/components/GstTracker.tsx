@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Project, GstRecord } from '../types';
+import { Project, GstRecord, Payer } from '../types';
 import { 
   Plus, 
   Trash2, 
@@ -14,13 +14,15 @@ import {
   Download, 
   FileText,
   Edit,
-  X
+  X,
+  UserCheck
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface GstTrackerProps {
   activeProject: Project | null;
   gstRecords: GstRecord[];
+  payers?: Payer[];
   onAddGstRecord: (record: GstRecord) => Promise<void>;
   onUpdateGstRecord: (record: GstRecord) => Promise<void>;
   onDeleteGstRecord: (id: string) => Promise<void>;
@@ -29,6 +31,7 @@ interface GstTrackerProps {
 export default function GstTracker({
   activeProject,
   gstRecords,
+  payers = [],
   onAddGstRecord,
   onUpdateGstRecord,
   onDeleteGstRecord,
@@ -55,6 +58,7 @@ export default function GstTracker({
   const [gstRate, setGstRate] = useState(18); // Default 18% standard GST rate in India
   const [gstType, setGstType] = useState<'paid' | 'claimed'>('paid');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paidBy, setPaidBy] = useState('');
   const [notes, setNotes] = useState('');
 
   if (!activeProject) {
@@ -112,6 +116,7 @@ export default function GstTracker({
     setGstRate(rec.gstRate);
     setGstType(rec.type);
     setDate(rec.date);
+    setPaidBy(rec.paidBy || '');
     setNotes(rec.notes || '');
     setFormError(null);
 
@@ -133,6 +138,7 @@ export default function GstTracker({
     setGstRate(18);
     setGstType('paid');
     setDate(new Date().toISOString().split('T')[0]);
+    setPaidBy('');
     setNotes('');
     setFormError(null);
   };
@@ -167,6 +173,7 @@ export default function GstTracker({
         gstRate,
         gstAmount: calculatedGst,
         type: gstType,
+        paidBy: paidBy.trim() || undefined,
         notes: notes.trim() || undefined,
       };
       await onUpdateGstRecord(updatedRecord);
@@ -183,6 +190,7 @@ export default function GstTracker({
         gstRate,
         gstAmount: calculatedGst,
         type: gstType,
+        paidBy: paidBy.trim() || undefined,
         notes: notes.trim() || undefined,
       };
 
@@ -193,6 +201,7 @@ export default function GstTracker({
       setPartyName('');
       setGstin('');
       setAmount('');
+      setPaidBy('');
       setNotes('');
     }
   };
@@ -457,6 +466,30 @@ export default function GstTracker({
             )}
 
             <div className="space-y-1">
+              <label className="font-semibold text-slate-600 uppercase tracking-wider text-[10px]">Paid By (Payer / Account)</label>
+              {payers && payers.length > 0 ? (
+                <select
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="">-- Select Disburser / Payer --</option>
+                  {payers.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="e.g. Ramesh Kumar / Company Account"
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              )}
+            </div>
+
+            <div className="space-y-1">
               <label className="font-semibold text-slate-600 uppercase tracking-wider text-[10px]">Item Description / Notes</label>
               <textarea
                 placeholder="e.g. Bought sand bags, or progress bill block A"
@@ -574,7 +607,15 @@ export default function GstTracker({
 
                         {/* Invoice & Party */}
                         <td className="py-3 px-3">
-                          <div className="font-semibold text-slate-800">{rec.partyName}</div>
+                          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span>{rec.partyName}</span>
+                            {rec.paidBy && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">
+                                <UserCheck className="w-3 h-3 text-indigo-500" />
+                                {payers.find(p => p.id === rec.paidBy || p.name === rec.paidBy)?.name || rec.paidBy}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
                             <span>No: {rec.invoiceNo}</span>
                             {rec.gstin && (

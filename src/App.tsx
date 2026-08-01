@@ -68,6 +68,7 @@ import DailyExpensesTracker from './components/DailyExpensesTracker';
 import BackupPromptBanner from './components/BackupPromptBanner';
 import GanttPhaseTimeline from './components/GanttPhaseTimeline';
 import PettyCashRegister from './components/PettyCashRegister';
+import PayerManager from './components/PayerManager';
 
 import {
   Briefcase,
@@ -98,10 +99,11 @@ import {
   ChevronLeft,
   Layers,
   Wallet,
-  CloudOff
+  CloudOff,
+  UserCheck
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses' | 'phases' | 'pettycash';
+type TabType = 'dashboard' | 'projects' | 'attendance' | 'payments' | 'materials' | 'reports' | 'labours' | 'food' | 'analysis' | 'gst' | 'diary' | 'delays' | 'expenses' | 'phases' | 'pettycash' | 'payers';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
@@ -1308,6 +1310,7 @@ export default function App() {
     { id: 'food', label: 'Hotel Food (Rs. 100)', icon: Utensils, iconColor: 'text-amber-500', category: 'Costing & Food' },
     { id: 'expenses', label: 'Daily Expenses & Misc', icon: Receipt, iconColor: 'text-emerald-500', category: 'Costing & Food' },
     { id: 'gst', label: 'GST Invoices', icon: Percent, iconColor: 'text-violet-500', category: 'Costing & Food' },
+    { id: 'payers', label: 'Payer Management', icon: UserCheck, iconColor: 'text-indigo-500', badge: payers.length.toString(), category: 'Costing & Food' },
   ];
 
   return (
@@ -1581,6 +1584,7 @@ export default function App() {
               onDeleteAdvance={handleDeleteAdvance}
               onDeletePayment={handleDeletePayment}
               onDeleteHotelAdvance={handleDeleteHotelAdvance}
+              onAddPayer={handleAddPayer}
               onUpdatePayer={handleUpdatePayer}
               onDeletePayer={handleDeletePayer}
               onUpdateGstRecord={handleUpdateGstRecord}
@@ -1665,6 +1669,7 @@ export default function App() {
             <MaterialTracker
               activeProject={activeProject}
               materials={materials}
+              payers={payers}
               onAddMaterial={handleAddMaterial}
               onUpdateMaterial={handleUpdateMaterial}
               onDeleteMaterial={handleDeleteMaterial}
@@ -1703,6 +1708,7 @@ export default function App() {
               attendanceRecords={attendanceRecords}
               hotelAdvances={hotelAdvances}
               foodLogs={foodLogs}
+              payers={payers}
               onAddHotelAdvance={handleAddHotelAdvance}
               onDeleteHotelAdvance={handleDeleteHotelAdvance}
               onAddFoodLog={handleAddFoodLog}
@@ -1730,6 +1736,7 @@ export default function App() {
             <GstTracker
               activeProject={activeProject}
               gstRecords={gstRecords}
+              payers={payers}
               onAddGstRecord={handleAddGstRecord}
               onUpdateGstRecord={handleUpdateGstRecord}
               onDeleteGstRecord={handleDeleteGstRecord}
@@ -1798,6 +1805,24 @@ export default function App() {
               dailyExpenses={dailyExpenses}
               foodCalculationStartDate={foodCalculationStartDate}
               onFoodCalculationStartDateChange={setFoodCalculationStartDate}
+            />
+          )}
+
+          {activeTab === 'payers' && (
+            <PayerManager
+              payers={payers}
+              projects={projects}
+              advanceRecords={advanceRecords}
+              paymentRecords={paymentRecords}
+              dailyExpenses={dailyExpenses}
+              hotelAdvances={hotelAdvances}
+              materials={materials}
+              gstRecords={gstRecords}
+              pettyCashEntries={pettyCashEntries}
+              activeProjectId={activeProjectId}
+              onAddPayer={handleAddPayer}
+              onUpdatePayer={handleUpdatePayer}
+              onDeletePayer={handleDeletePayer}
             />
           )}
         </main>

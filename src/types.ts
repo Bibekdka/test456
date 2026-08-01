@@ -153,6 +153,7 @@ export interface Payer extends BaseEntity {
   name: string;
   role?: string; // e.g., Supervisor, Cashier, Manager
   phone?: string;
+  notes?: string;
 }
 
 export interface Payment extends BaseEntity {
@@ -184,6 +185,7 @@ export interface Material extends BaseEntity {
   cost: number;
   dateBought: string; // YYYY-MM-DD
   supplier?: string;
+  paidBy?: string; // ID or Name of Payer who made the material payment
   billImage?: string; // Base64 data URI of the uploaded image
   billImageName?: string;
   usages: MaterialUsage[];
@@ -219,6 +221,7 @@ export interface HotelAdvance extends BaseEntity {
   date: string; // YYYY-MM-DD
   amount: number;
   hotelName: string;
+  paidBy?: string; // ID or Name of Payer who made the hotel/mess payment
   notes?: string;
 }
 
@@ -243,6 +246,7 @@ export interface GstRecord extends BaseEntity {
   gstRate: number; // GST rate in percentage (e.g., 5, 12, 18, 28)
   gstAmount: number; // GST amount
   type: 'paid' | 'claimed'; // 'paid' (Paid on Purchase/Input Tax) or 'claimed' (Collected/Claimed on Sales/Output Tax)
+  paidBy?: string; // ID or Name of Payer who made the payment
   notes?: string;
 }
 

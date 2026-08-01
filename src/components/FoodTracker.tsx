@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Project, Labour, HotelAdvance, FoodLog, Attendance, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost, isLabourInProjectScope } from '../types';
+import { Project, Labour, HotelAdvance, FoodLog, Attendance, Payer, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
-import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays } from 'lucide-react';
+import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays, UserCheck } from 'lucide-react';
 import CustomerMealCalendar from './CustomerMealCalendar';
 
 interface FoodTrackerProps {
@@ -10,6 +10,7 @@ interface FoodTrackerProps {
   attendanceRecords: Attendance[];
   hotelAdvances: HotelAdvance[];
   foodLogs: FoodLog[];
+  payers?: Payer[];
   onAddHotelAdvance: (advance: HotelAdvance) => Promise<void>;
   onDeleteHotelAdvance: (id: string) => Promise<void>;
   onAddFoodLog: (log: FoodLog) => Promise<void>;
@@ -26,6 +27,7 @@ export default function FoodTracker({
   attendanceRecords,
   hotelAdvances,
   foodLogs,
+  payers = [],
   onAddHotelAdvance,
   onDeleteHotelAdvance,
   onAddFoodLog,
@@ -49,6 +51,7 @@ export default function FoodTracker({
   const [hotelName, setHotelName] = useState('Highway Highway Inn');
   const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [advanceNotes, setAdvanceNotes] = useState('');
+  const [advancePaidBy, setAdvancePaidBy] = useState('');
   
   // Food Log Form
   const [selectedLabourId, setSelectedLabourId] = useState('');
@@ -182,12 +185,14 @@ export default function FoodTracker({
       date: advanceDate,
       amount: parseFloat(advanceAmount),
       hotelName: hotelName.trim(),
+      paidBy: advancePaidBy.trim() || undefined,
       notes: advanceNotes.trim() || undefined
     };
 
     await onAddHotelAdvance(newAdvance);
     setAdvanceAmount('');
     setAdvanceNotes('');
+    setAdvancePaidBy('');
     alert('Hotel advance recorded successfully.');
   };
 
@@ -1287,6 +1292,33 @@ export default function FoodTracker({
                 </div>
               </div>
 
+              {/* Paid By */}
+              <div>
+                <label htmlFor="hotel-adv-paid-by" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Paid By (Payer / Cash Disburser)</label>
+                {payers && payers.length > 0 ? (
+                  <select
+                    id="hotel-adv-paid-by"
+                    value={advancePaidBy}
+                    onChange={(e) => setAdvancePaidBy(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                  >
+                    <option value="">-- Select Disburser / Payer --</option>
+                    {payers.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    id="hotel-adv-paid-by"
+                    value={advancePaidBy}
+                    onChange={(e) => setAdvancePaidBy(e.target.value)}
+                    placeholder="e.g. Ramesh Kumar / Site Fund"
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-lg p-2.5 focus:ring-1 focus:ring-slate-900 focus:outline-none"
+                  />
+                )}
+              </div>
+
               {/* Notes */}
               <div>
                 <label htmlFor="hotel-adv-notes" className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Notes / Description</label>
@@ -1335,6 +1367,7 @@ export default function FoodTracker({
                       <th className="px-4 py-3">Date</th>
                       <th className="px-4 py-3">Hotel Name</th>
                       <th className="px-4 py-3 text-right">Amount Paid</th>
+                      <th className="px-4 py-3">Paid By</th>
                       <th className="px-4 py-3">Notes</th>
                       <th className="px-4 py-3 text-center">Action</th>
                     </tr>
@@ -1348,6 +1381,16 @@ export default function FoodTracker({
                           <td className="px-4 py-3 font-semibold text-slate-800">{adv.hotelName}</td>
                           <td className="px-4 py-3 font-bold text-slate-900 text-right">
                             ₹{adv.amount.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            {adv.paidBy ? (
+                              <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px]">
+                                <UserCheck className="w-3 h-3 text-indigo-500" />
+                                {payers.find(p => p.id === adv.paidBy || p.name === adv.paidBy)?.name || adv.paidBy}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-mono">—</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-slate-500 italic max-w-[150px] truncate" title={adv.notes}>
                             {adv.notes || '—'}

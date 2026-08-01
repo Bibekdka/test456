@@ -4,14 +4,15 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Material, MaterialUsage } from '../types';
+import { Project, Material, MaterialUsage, Payer } from '../types';
 import { generateId } from '../utils/id';
-import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil, AlertTriangle, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface MaterialTrackerProps {
   activeProject: Project | null;
   materials: Material[];
+  payers?: Payer[];
   onAddMaterial: (material: Material) => void;
   onUpdateMaterial: (material: Material) => void;
   onDeleteMaterial: (id: string) => void;
@@ -20,6 +21,7 @@ interface MaterialTrackerProps {
 export default function MaterialTracker({
   activeProject,
   materials,
+  payers = [],
   onAddMaterial,
   onUpdateMaterial,
   onDeleteMaterial,
@@ -41,6 +43,7 @@ export default function MaterialTracker({
   const [cost, setCost] = useState('');
   const [dateBought, setDateBought] = useState(new Date().toISOString().split('T')[0]);
   const [supplier, setSupplier] = useState('');
+  const [paidBy, setPaidBy] = useState('');
   const [billImage, setBillImage] = useState<string>('');
   const [billImageName, setBillImageName] = useState<string>('');
   const [alertThreshold, setAlertThreshold] = useState('');
@@ -53,6 +56,7 @@ export default function MaterialTracker({
   const [editCost, setEditCost] = useState('');
   const [editDateBought, setEditDateBought] = useState('');
   const [editSupplier, setEditSupplier] = useState('');
+  const [editPaidBy, setEditPaidBy] = useState('');
   const [editBillImage, setEditBillImage] = useState<string>('');
   const [editBillImageName, setEditBillImageName] = useState<string>('');
   const [editAlertThreshold, setEditAlertThreshold] = useState('');
@@ -65,6 +69,7 @@ export default function MaterialTracker({
     setEditCost(String(m.cost));
     setEditDateBought(m.dateBought);
     setEditSupplier(m.supplier || '');
+    setEditPaidBy(m.paidBy || '');
     setEditBillImage(m.billImage || '');
     setEditBillImageName(m.billImageName || '');
     setEditAlertThreshold(m.alertThreshold !== undefined ? String(m.alertThreshold) : '');
@@ -83,6 +88,7 @@ export default function MaterialTracker({
       cost: Number(editCost),
       dateBought: editDateBought,
       supplier: editSupplier || 'Local Vendor',
+      paidBy: editPaidBy || undefined,
       billImage: editBillImage || undefined,
       billImageName: editBillImageName || undefined,
       alertThreshold: editAlertThreshold ? Number(editAlertThreshold) : undefined,
@@ -200,6 +206,7 @@ export default function MaterialTracker({
       cost: Number(cost),
       dateBought,
       supplier: supplier || 'Local Vendor',
+      paidBy: paidBy || undefined,
       billImage: billImage || undefined,
       billImageName: billImageName || undefined,
       usages: [],
@@ -218,6 +225,7 @@ export default function MaterialTracker({
     setCost('');
     setDateBought(new Date().toISOString().split('T')[0]);
     setSupplier('');
+    setPaidBy('');
     setBillImage('');
     setBillImageName('');
     setAlertThreshold('');
@@ -567,6 +575,44 @@ export default function MaterialTracker({
             </div>
 
             <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center justify-between">
+                <span>Paid By (Payer / Account)</span>
+              </label>
+              {payers && payers.length > 0 ? (
+                <div className="space-y-1">
+                  <select
+                    value={paidBy}
+                    onChange={(e) => setPaidBy(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                  >
+                    <option value="">-- Select Disburser / Payer --</option>
+                    {payers.map(p => (
+                      <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                    ))}
+                    <option value="custom_input">+ Enter Custom Payer Name...</option>
+                  </select>
+                  {paidBy === 'custom_input' && (
+                    <input
+                      type="text"
+                      placeholder="Enter custom payer name"
+                      onChange={(e) => setPaidBy(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 mt-1"
+                      autoFocus
+                    />
+                  )}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={paidBy}
+                  onChange={(e) => setPaidBy(e.target.value)}
+                  placeholder="e.g. Ramesh Kumar / Site Partner"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Low Stock Warning Alert Threshold</label>
               <input
                 type="number"
@@ -668,6 +714,11 @@ export default function MaterialTracker({
                       </div>
                       <p className="text-slate-400 text-xs mt-0.5 font-mono">
                         Bought: {m.dateBought} • {m.supplier}
+                        {m.paidBy && (
+                          <span className="text-indigo-600 font-semibold ml-1">
+                            • Paid By: {payers.find(p => p.id === m.paidBy || p.name === m.paidBy)?.name || m.paidBy}
+                          </span>
+                        )}
                         {m.alertThreshold !== undefined && ` • Limit: ${m.alertThreshold} ${m.unit}`}
                       </p>
                     </div>
@@ -1037,6 +1088,30 @@ export default function MaterialTracker({
                       placeholder="e.g. Sharma Building Materials Depot"
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Paid By (Payer / Account)</label>
+                    {payers && payers.length > 0 ? (
+                      <select
+                        value={editPaidBy}
+                        onChange={(e) => setEditPaidBy(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
+                      >
+                        <option value="">-- Select Disburser / Payer --</option>
+                        {payers.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} {p.role ? `(${p.role})` : ''}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={editPaidBy}
+                        onChange={(e) => setEditPaidBy(e.target.value)}
+                        placeholder="e.g. Ramesh Kumar / Site Partner"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      />
+                    )}
                   </div>
 
                   <div className="space-y-1.5">

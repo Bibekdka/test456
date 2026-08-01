@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import PayerManager from './PayerManager';
 import { 
   Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, 
   Advance, Payment, HotelAdvance, Payer,
@@ -58,6 +59,7 @@ interface DashboardProps {
   onDeleteAdvance?: (id: string) => Promise<void>;
   onDeletePayment?: (id: string) => Promise<void>;
   onDeleteHotelAdvance?: (id: string) => Promise<void>;
+  onAddPayer?: (p: Payer) => Promise<void>;
   onUpdatePayer?: (p: Payer) => Promise<void>;
   onDeletePayer?: (id: string) => Promise<void>;
   onUpdateGstRecord?: (gst: GstRecord) => Promise<void>;
@@ -130,6 +132,7 @@ export default function Dashboard({
   onDeleteAdvance,
   onDeletePayment,
   onDeleteHotelAdvance,
+  onAddPayer,
   onUpdatePayer,
   onDeletePayer,
   onUpdateGstRecord,
@@ -2319,15 +2322,15 @@ export default function Dashboard({
       {/* 4. PARTNER & PAYER OUTLAYS LEDGER MODAL */}
       {activeModal === 'payers' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-6xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <div className="p-4 sm:p-5 bg-indigo-950 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-xl bg-indigo-800 text-indigo-200">
-                  <Users className="w-5 h-5" />
+                  <UserCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">Partner & Investor Outlay Contributions Ledger</h3>
-                  <p className="text-xs text-indigo-300">Detailed financial records of funds disbursed by partners, investors, or company accounts</p>
+                  <h3 className="font-bold text-base text-white">Authorized Payer Management & Outlays</h3>
+                  <p className="text-xs text-indigo-300">Add, edit, or remove disbursers and inspect total expenses attributed to each individual</p>
                 </div>
               </div>
               <button
@@ -2339,82 +2342,28 @@ export default function Dashboard({
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4 flex-1">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="bg-indigo-50 border border-indigo-100 p-3.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Total Disbursed</span>
-                  <span className="text-xl font-mono font-bold text-indigo-950">₹{totalInvestedByPayers.toLocaleString()}</span>
-                </div>
-                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Active Payers</span>
-                  <span className="text-xl font-mono font-bold text-slate-800">{payerContributions.length} Investors/Payers</span>
-                </div>
-                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Payer Actions</span>
-                    <span className="text-xs text-slate-600 font-semibold">Manage Payer Profiles</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const pName = prompt("Enter new partner / investor name:");
-                      if (pName && pName.trim()) {
-                        const newP: Payer = {
-                          id: generateId('pyr'),
-                          name: pName.trim(),
-                          role: 'Partner / Investor'
-                        };
-                        if (onUpdatePayer) onUpdatePayer(newP);
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-lg text-xs font-bold transition cursor-pointer"
-                  >
-                    + Add Partner
-                  </button>
-                </div>
-              </div>
-
-              {/* Partner Breakdown Cards */}
-              <div className="space-y-4">
-                {payerContributions.map(pc => (
-                  <div key={pc.name} className="border border-slate-200 rounded-xl p-4 bg-white shadow-2xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold text-sm">
-                          {pc.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <h5 className="font-bold text-slate-900 text-sm">{pc.name}</h5>
-                          <span className="text-[10px] text-slate-400">{pc.items.length} credited transaction outlays</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Total Outlay</span>
-                        <span className="text-base font-mono font-bold text-indigo-900">₹{pc.totalAmount.toLocaleString()}</span>
-                      </div>
-                    </div>
-
-                    {/* Itemized Transactions for this Payer */}
-                    <div className="space-y-1.5 text-xs">
-                      {pc.items.map((item, idx) => (
-                        <div key={idx} className="bg-slate-50 rounded-lg p-2.5 flex items-center justify-between gap-3 border border-slate-100">
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-slate-400">{item.date}</span>
-                              <span className="bg-white border border-slate-200 text-slate-700 font-bold text-[9px] px-1.5 py-0.5 rounded uppercase">
-                                {item.type}
-                              </span>
-                              <span className="text-[10px] font-semibold text-slate-600 truncate">{item.projectName}</span>
-                            </div>
-                            <p className="font-semibold text-slate-800 truncate">{item.description}</p>
-                          </div>
-                          <strong className="font-mono font-bold text-slate-900 shrink-0">₹{item.amount.toLocaleString()}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+              <PayerManager
+                payers={payers || []}
+                projects={projects}
+                advanceRecords={advanceRecords || []}
+                paymentRecords={paymentRecords || []}
+                dailyExpenses={dailyExpenses || []}
+                hotelAdvances={hotelAdvances || []}
+                materials={materials || []}
+                gstRecords={gstRecords || []}
+                activeProjectId={activeProjectId}
+                onAddPayer={async (p) => {
+                  if (onAddPayer) await onAddPayer(p);
+                  else if (onUpdatePayer) await onUpdatePayer(p);
+                }}
+                onUpdatePayer={async (p) => {
+                  if (onUpdatePayer) await onUpdatePayer(p);
+                }}
+                onDeletePayer={async (id) => {
+                  if (onDeletePayer) await onDeletePayer(id);
+                }}
+              />
             </div>
           </div>
         </div>
