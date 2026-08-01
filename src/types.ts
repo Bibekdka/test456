@@ -136,6 +136,7 @@ export interface Attendance extends BaseEntity {
   projectId: string;
   date: string; // YYYY-MM-DD
   status: AttendanceStatus;
+  dailyWage?: number;
 }
 
 export interface Advance extends BaseEntity {

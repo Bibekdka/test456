@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PayerManager from './PayerManager';
 import { 
   Project, Labour, Attendance, Material, FoodLog, GstRecord, DailyExpense, 
@@ -140,7 +140,14 @@ export default function Dashboard({
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'on_hold'>('all');
-  const [projectDisplayMode, setProjectDisplayMode] = useState<'cards' | 'table'>('cards');
+  const [projectDisplayMode, setProjectDisplayMode] = useState<'cards' | 'table'>(() => {
+    const saved = localStorage.getItem('dashboard_project_display_mode');
+    return (saved === 'table' || saved === 'cards') ? saved : 'cards';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('dashboard_project_display_mode', projectDisplayMode);
+  }, [projectDisplayMode]);
   
   // Interactive KPI Cards Modal Inspection State
   const [activeModal, setActiveModal] = useState<'budget' | 'expenses' | 'balance' | 'payers' | null>(null);
@@ -253,12 +260,11 @@ export default function Dashboard({
     let labourWages = 0;
     pAttendance.forEach((att) => {
       const labour = labours.find(l => l.id === att.labourId);
-      if (labour) {
-        if (att.status === 'present') {
-          labourWages += labour.perDayWage;
-        } else if (att.status === 'half_day') {
-          labourWages += labour.perDayWage / 2;
-        }
+      const perDayWage = att.dailyWage ?? labour?.perDayWage ?? 0;
+      if (att.status === 'present') {
+        labourWages += perDayWage;
+      } else if (att.status === 'half_day') {
+        labourWages += perDayWage / 2;
       }
     });
 
@@ -597,35 +603,35 @@ export default function Dashboard({
   return (
     <div className="space-y-6">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-indigo-600" />
+          <h2 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-indigo-600 shrink-0" />
             Overall Projects & Financial Control Dashboard
           </h2>
           <p className="text-xs text-slate-500 mt-1">
             Consolidated overview of site budgets, expenditure stats, partner investments, worker payrolls, and stock levels.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => {
               if (confirm("CRITICAL WARNING: This will permanently wipe all local construction sites, workers, daily attendance sheets, advance and payment logs, material deliveries, food bills, and tax data from your browser's local cache.\n\nAre you sure you want to completely start fresh?")) {
                 onResetDatabase();
               }
             }}
-            className="inline-flex items-center gap-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 px-3.5 py-2.5 sm:py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs min-h-[42px] sm:min-h-0"
             title="Wipe and start completely fresh"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            Reset DB
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+            <span>Reset DB</span>
           </button>
           <button
             onClick={handleOpenAddForm}
-            className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white px-4 py-2.5 sm:py-2 rounded-lg text-xs font-semibold transition cursor-pointer shadow-xs min-h-[42px] sm:min-h-0"
           >
-            <Plus className="w-4 h-4" />
-            Add Construction Site
+            <Plus className="w-4 h-4 shrink-0" />
+            <span>Add Construction Site</span>
           </button>
         </div>
       </div>
@@ -876,20 +882,20 @@ export default function Dashboard({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="relative text-xs">
-              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+            <div className="relative text-xs flex-1 sm:flex-initial w-full sm:w-auto">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search investor..."
                 value={payerSearch}
                 onChange={(e) => setPayerSearch(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1 text-xs w-[160px] focus:outline-none focus:ring-1 focus:ring-slate-900"
+                className="bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs w-full sm:w-[160px] focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
             </div>
             <button
               onClick={() => setActiveTab('labours')}
-              className="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg font-bold transition cursor-pointer"
+              className="text-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer shrink-0"
             >
               Manage Payers
             </button>
@@ -1426,7 +1432,7 @@ export default function Dashboard({
                 {chartView === 'overall' ? (
                   <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={{ stroke: '#cbd5e1' }} />
+                    <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={{ stroke: '#cbd5e1' }} tickFormatter={(v: string) => v.length > 12 ? `${v.slice(0, 10)}…` : v} />
                     <YAxis tickFormatter={(v) => `₹${v >= 100000 ? (v / 100000).toFixed(1) + 'L' : v}`} tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={{ stroke: '#cbd5e1' }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} verticalAlign="bottom" height={36} />
@@ -1446,7 +1452,7 @@ export default function Dashboard({
                 ) : (
                   <BarChart data={chartData} margin={{ top: 15, right: 10, left: -10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={{ stroke: '#cbd5e1' }} />
+                    <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={{ stroke: '#cbd5e1' }} tickFormatter={(v: string) => v.length > 12 ? `${v.slice(0, 10)}…` : v} />
                     <YAxis tickFormatter={(v) => `₹${v >= 100000 || v <= -100000 ? (v / 100000).toFixed(1) + 'L' : v}`} tick={{ fill: '#64748b', fontSize: 10, fontFamily: 'monospace' }} axisLine={{ stroke: '#cbd5e1' }} />
                     <Tooltip formatter={(value: any) => [`₹${Number(value).toLocaleString()}`, Number(value) > 0 ? 'Deficit (Over)' : 'Savings (Under)']} labelStyle={{ fontWeight: 'bold' }} contentStyle={{ fontSize: 11 }} />
                     <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} verticalAlign="bottom" height={36} />
