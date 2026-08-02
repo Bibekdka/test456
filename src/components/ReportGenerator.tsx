@@ -61,10 +61,18 @@ export default function ReportGenerator({
     const pId = payer.id.toLowerCase();
     const pName = payer.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
     const pFirstName = pName.split(' ')[0];
+    const pPhoneDigits = (payer.phone || '').replace(/\D/g, '');
 
     const ref = (explicitRef || '').trim().toLowerCase();
     const refClean = ref.replace(/\s*\([^)]*\)/g, '').trim();
     const refFirstName = refClean.split(' ')[0];
+    const refDigits = ref.replace(/\D/g, '');
+
+    if (refDigits && refDigits.length >= 6 && pPhoneDigits && pPhoneDigits.length >= 6) {
+      if (pPhoneDigits === refDigits || pPhoneDigits.endsWith(refDigits) || refDigits.endsWith(pPhoneDigits)) {
+        return true;
+      }
+    }
 
     if (ref) {
       if (ref === pId || refClean === pName) return true;

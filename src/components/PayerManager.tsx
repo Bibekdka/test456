@@ -150,15 +150,24 @@ export default function PayerManager({
       const cleanedRef = rawRef.replace(/\s*\([^)]*\)/g, '').trim();
       const targetLower = cleanedRef.toLowerCase();
       const targetFirstName = targetLower.split(' ')[0];
+      const rawDigits = rawRef.replace(/\D/g, '');
 
       // Find registered payer profile or labour member
       const registered = payers.find(p => {
         const pIdLower = p.id.toLowerCase();
         const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
         const pFirstName = pNameClean.split(' ')[0];
+        const pPhoneDigits = (p.phone || '').replace(/\D/g, '');
+
+        const phoneMatches = Boolean(
+          rawDigits && pPhoneDigits && rawDigits.length >= 6 && pPhoneDigits.length >= 6 &&
+          (pPhoneDigits === rawDigits || pPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(pPhoneDigits))
+        );
+
         return p.id === rawRef || 
                pIdLower === targetLower || 
                pNameClean === targetLower ||
+               phoneMatches ||
                (targetLower.length >= 3 && pNameClean.includes(targetLower)) ||
                (pNameClean.length >= 3 && targetLower.includes(pNameClean)) ||
                (targetFirstName.length >= 3 && pFirstName === targetFirstName);
@@ -168,9 +177,17 @@ export default function PayerManager({
         const lIdLower = l.id.toLowerCase();
         const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
         const lFirstName = lNameClean.split(' ')[0];
+        const lPhoneDigits = (l.contact || l.phone || '').replace(/\D/g, '');
+
+        const phoneMatches = Boolean(
+          rawDigits && lPhoneDigits && rawDigits.length >= 6 && lPhoneDigits.length >= 6 &&
+          (lPhoneDigits === rawDigits || lPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(lPhoneDigits))
+        );
+
         return l.id === rawRef || 
                lIdLower === targetLower || 
                lNameClean === targetLower ||
+               phoneMatches ||
                (targetLower.length >= 3 && lNameClean.includes(targetLower)) ||
                (lNameClean.length >= 3 && targetLower.includes(lNameClean)) ||
                (targetFirstName.length >= 3 && lFirstName === targetFirstName);
@@ -195,7 +212,12 @@ export default function PayerManager({
             (vNameClean.length >= 3 && targetLowerName.includes(vNameClean)) ||
             (tFirstName.length >= 3 && vFirstName === tFirstName);
 
-          const phoneMatch = Boolean(targetPhone && vPhoneClean && targetPhone.length >= 8 && targetPhone === vPhoneClean);
+          const phoneMatch = Boolean(
+            (targetPhone && vPhoneClean && targetPhone.length >= 6 && vPhoneClean.length >= 6 &&
+             (targetPhone === vPhoneClean || targetPhone.endsWith(vPhoneClean) || vPhoneClean.endsWith(targetPhone))) ||
+            (rawDigits && vPhoneClean && rawDigits.length >= 6 && vPhoneClean.length >= 6 &&
+             (rawDigits === vPhoneClean || rawDigits.endsWith(vPhoneClean) || vPhoneClean.endsWith(rawDigits)))
+          );
 
           if (nameMatch || phoneMatch) {
             resolvedKey = k;
@@ -210,7 +232,7 @@ export default function PayerManager({
           id: registered ? registered.id : resolvedKey,
           name: displayName,
           role: registered?.role || (labourMember ? `Labour: ${labourMember.role || labourMember.category || 'Member'}` : undefined),
-          phone: registered?.phone || labourMember?.contact || labourMember?.phone,
+          phone: registered?.phone || labourMember?.contact || labourMember?.phone || (rawDigits.length >= 6 ? rawRef : undefined),
           notes: (registered as any)?.notes,
           totalDisbursed: 0,
           advancesTotal: 0,
@@ -277,15 +299,15 @@ export default function PayerManager({
 
     // Helper to resolve partner support provider
     const resolvePartnerHelper = (partnerRef?: string, description?: string, notes?: string) => {
-      const rawRef = (partnerRef || '').trim();
-      if (rawRef) {
-        const p = resolveEntryKey(rawRef);
-        if (p) return p;
-      }
       const fullText = `${description || ''} ${notes || ''}`;
       const match = fullText.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
       if (match && match[1]) {
         const p = resolveEntryKey(match[1].trim());
+        if (p) return p;
+      }
+      const rawRef = (partnerRef || '').trim();
+      if (rawRef) {
+        const p = resolveEntryKey(rawRef);
         if (p) return p;
       }
       return null;
