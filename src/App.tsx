@@ -1806,6 +1806,7 @@ export default function App() {
               activeProject={activeProject}
               materials={materials}
               payers={payers}
+              labours={labours}
               onAddMaterial={handleAddMaterial}
               onUpdateMaterial={handleUpdateMaterial}
               onDeleteMaterial={handleDeleteMaterial}

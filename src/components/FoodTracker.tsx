@@ -66,7 +66,11 @@ export default function FoodTracker({
   const [advanceDate, setAdvanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [advanceNotes, setAdvanceNotes] = useState('');
   const [advancePaidBy, setAdvancePaidBy] = useState('');
-  
+  const [isPartnerHelp, setIsPartnerHelp] = useState(false);
+  const [partnerMember, setPartnerMember] = useState('');
+  const [partnerPhone, setPartnerPhone] = useState('');
+  const [partnerAmount, setPartnerAmount] = useState('');
+
   // Food Log Form
   const [selectedLabourId, setSelectedLabourId] = useState('');
   const [mealsCount, setMealsCount] = useState(1);
@@ -118,6 +122,10 @@ export default function FoodTracker({
   const [editAdvAmount, setEditAdvAmount] = useState<number>(0);
   const [editAdvPaidBy, setEditAdvPaidBy] = useState('');
   const [editAdvNotes, setEditAdvNotes] = useState('');
+  const [editAdvIsPartnerHelp, setEditAdvIsPartnerHelp] = useState(false);
+  const [editAdvPartnerMember, setEditAdvPartnerMember] = useState('');
+  const [editAdvPartnerPhone, setEditAdvPartnerPhone] = useState('');
+  const [editAdvPartnerAmount, setEditAdvPartnerAmount] = useState('');
 
   const handleStartEditAdvance = (adv: HotelAdvance) => {
     setEditingAdvanceId(adv.id);
@@ -126,6 +134,12 @@ export default function FoodTracker({
     setEditAdvAmount(adv.amount);
     setEditAdvPaidBy(adv.paidBy || '');
     setEditAdvNotes(adv.notes || '');
+    setEditAdvIsPartnerHelp(!!adv.isPartnerHelp);
+    setEditAdvPartnerPhone(adv.partnerPhone || '');
+    setEditAdvPartnerAmount(adv.partnerAmount !== undefined ? String(adv.partnerAmount) : '');
+    const foundPayer = payers.find(p => p.phone === adv.partnerPhone);
+    const foundLabour = labours.find(l => l.contact === adv.partnerPhone || l.phone === adv.partnerPhone);
+    setEditAdvPartnerMember(foundPayer?.name || foundLabour?.name || '');
   };
 
   const handleSaveEditAdvance = async (adv: HotelAdvance) => {
@@ -133,6 +147,11 @@ export default function FoodTracker({
       alert('Please provide a valid hotel name and positive amount.');
       return;
     }
+
+    const parsedPartnerAmount = editAdvIsPartnerHelp 
+      ? (editAdvPartnerAmount.trim() ? parseFloat(editAdvPartnerAmount) : editAdvAmount)
+      : undefined;
+
     if (onUpdateHotelAdvance) {
       await onUpdateHotelAdvance({
         ...adv,
@@ -140,6 +159,9 @@ export default function FoodTracker({
         hotelName: editAdvHotelName.trim(),
         amount: editAdvAmount,
         paidBy: editAdvPaidBy.trim() || undefined,
+        isPartnerHelp: editAdvIsPartnerHelp,
+        partnerPhone: editAdvIsPartnerHelp ? (editAdvPartnerPhone.trim() || undefined) : undefined,
+        partnerAmount: parsedPartnerAmount,
         notes: editAdvNotes.trim() || undefined
       });
     }
@@ -228,6 +250,10 @@ export default function FoodTracker({
       return;
     }
 
+    const parsedPartnerAmount = isPartnerHelp 
+      ? (partnerAmount.trim() ? parseFloat(partnerAmount) : parseFloat(advanceAmount))
+      : undefined;
+
     const newAdvance: HotelAdvance = {
       id: `ha-${Date.now()}`,
       projectId: activeProject.id,
@@ -235,6 +261,9 @@ export default function FoodTracker({
       amount: parseFloat(advanceAmount),
       hotelName: hotelName.trim(),
       paidBy: advancePaidBy.trim() || undefined,
+      isPartnerHelp,
+      partnerPhone: isPartnerHelp ? (partnerPhone.trim() || undefined) : undefined,
+      partnerAmount: parsedPartnerAmount,
       notes: advanceNotes.trim() || undefined
     };
 
@@ -242,6 +271,10 @@ export default function FoodTracker({
     setAdvanceAmount('');
     setAdvanceNotes('');
     setAdvancePaidBy('');
+    setIsPartnerHelp(false);
+    setPartnerMember('');
+    setPartnerPhone('');
+    setPartnerAmount('');
     alert('Hotel advance recorded successfully.');
   };
 
@@ -1366,6 +1399,91 @@ export default function FoodTracker({
                     </optgroup>
                   )}
                 </select>
+
+                {/* 🤝 Dedicated Partner Help / Financial Support Section */}
+                <div className="mt-2.5 p-3 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-xl space-y-2.5">
+                  <label className="inline-flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300 font-extrabold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPartnerHelp}
+                      onChange={(e) => setIsPartnerHelp(e.target.checked)}
+                      className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                    />
+                    <span>🤝 Partner Help / Support Provided</span>
+                  </label>
+
+                  {isPartnerHelp && (
+                    <div className="space-y-2.5 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Select Supporting Partner / Member *
+                        </label>
+                        <select
+                          value={partnerMember}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPartnerMember(val);
+                            const foundPayer = payers.find(p => p.id === val || p.name === val);
+                            const foundLabour = labours.find(l => l.id === val || l.name === val);
+                            if (foundPayer?.phone) {
+                              setPartnerPhone(foundPayer.phone);
+                            } else if (foundLabour?.contact || foundLabour?.phone) {
+                              setPartnerPhone(foundLabour.contact || foundLabour.phone || '');
+                            }
+                          }}
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          <option value="">-- Choose Member / Partner --</option>
+                          {labours && labours.length > 0 && (
+                            <optgroup label="👷 Project Members & Labour Registry">
+                              {labours.map((l) => (
+                                <option key={`adv_phelp_lab_${l.id}`} value={l.name}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {payers && payers.length > 0 && (
+                            <optgroup label="🏢 Registered Payers & Partners">
+                              {payers.map((p) => (
+                                <option key={`adv_phelp_payer_${p.id}`} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                            Phone Number
+                          </label>
+                          <input
+                            type="tel"
+                            value={partnerPhone}
+                            onChange={(e) => setPartnerPhone(e.target.value)}
+                            placeholder="e.g. 9876543210"
+                            className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                            Amount (₹)
+                          </label>
+                          <input
+                            type="number"
+                            value={partnerAmount}
+                            onChange={(e) => setPartnerAmount(e.target.value)}
+                            placeholder={advanceAmount ? `Default: ₹${advanceAmount}` : "Amount"}
+                            className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Notes */}

@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Project, Material, MaterialUsage, Payer } from '../types';
+import { Project, Material, MaterialUsage, Payer, Labour } from '../types';
 import { generateId } from '../utils/id';
 import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil, AlertTriangle, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
@@ -13,6 +13,7 @@ interface MaterialTrackerProps {
   activeProject: Project | null;
   materials: Material[];
   payers?: Payer[];
+  labours?: Labour[];
   onAddMaterial: (material: Material) => void;
   onUpdateMaterial: (material: Material) => void;
   onDeleteMaterial: (id: string) => void;
@@ -22,6 +23,7 @@ export default function MaterialTracker({
   activeProject,
   materials,
   payers = [],
+  labours = [],
   onAddMaterial,
   onUpdateMaterial,
   onDeleteMaterial,
@@ -47,6 +49,10 @@ export default function MaterialTracker({
   const [billImage, setBillImage] = useState<string>('');
   const [billImageName, setBillImageName] = useState<string>('');
   const [alertThreshold, setAlertThreshold] = useState('');
+  const [isPartnerHelp, setIsPartnerHelp] = useState(false);
+  const [partnerMember, setPartnerMember] = useState('');
+  const [partnerPhone, setPartnerPhone] = useState('');
+  const [partnerAmount, setPartnerAmount] = useState('');
 
   // Edit Material Form State
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -60,6 +66,10 @@ export default function MaterialTracker({
   const [editBillImage, setEditBillImage] = useState<string>('');
   const [editBillImageName, setEditBillImageName] = useState<string>('');
   const [editAlertThreshold, setEditAlertThreshold] = useState('');
+  const [editIsPartnerHelp, setEditIsPartnerHelp] = useState(false);
+  const [editPartnerMember, setEditPartnerMember] = useState('');
+  const [editPartnerPhone, setEditPartnerPhone] = useState('');
+  const [editPartnerAmount, setEditPartnerAmount] = useState('');
 
   const startEditingMaterial = (m: Material) => {
     setEditingMaterial(m);
@@ -73,12 +83,22 @@ export default function MaterialTracker({
     setEditBillImage(m.billImage || '');
     setEditBillImageName(m.billImageName || '');
     setEditAlertThreshold(m.alertThreshold !== undefined ? String(m.alertThreshold) : '');
+    setEditIsPartnerHelp(!!m.isPartnerHelp);
+    setEditPartnerPhone(m.partnerPhone || '');
+    setEditPartnerAmount(m.partnerAmount !== undefined ? String(m.partnerAmount) : '');
+    const foundPayer = payers.find(p => p.phone === m.partnerPhone);
+    const foundLabour = labours.find(l => l.contact === m.partnerPhone || l.phone === m.partnerPhone);
+    setEditPartnerMember(foundPayer?.name || foundLabour?.name || '');
   };
 
   const handleEditMaterialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMaterial) return;
     if (!editName || !editQuantityBought || !editCost) return;
+
+    const parsedPartnerAmount = editIsPartnerHelp 
+      ? (editPartnerAmount.trim() ? parseFloat(editPartnerAmount) : Number(editCost))
+      : undefined;
 
     const updatedMaterial: Material = {
       ...editingMaterial,
@@ -89,6 +109,9 @@ export default function MaterialTracker({
       dateBought: editDateBought,
       supplier: editSupplier || 'Local Vendor',
       paidBy: editPaidBy || undefined,
+      isPartnerHelp: editIsPartnerHelp,
+      partnerPhone: editIsPartnerHelp ? (editPartnerPhone.trim() || undefined) : undefined,
+      partnerAmount: parsedPartnerAmount,
       billImage: editBillImage || undefined,
       billImageName: editBillImageName || undefined,
       alertThreshold: editAlertThreshold ? Number(editAlertThreshold) : undefined,
@@ -197,6 +220,10 @@ export default function MaterialTracker({
     e.preventDefault();
     if (!name || !quantityBought || !cost) return;
 
+    const parsedPartnerAmount = isPartnerHelp 
+      ? (partnerAmount.trim() ? parseFloat(partnerAmount) : Number(cost))
+      : undefined;
+
     const newMaterial: Material = {
       id: generateId('mat'),
       projectId: activeProject.id,
@@ -207,6 +234,9 @@ export default function MaterialTracker({
       dateBought,
       supplier: supplier || 'Local Vendor',
       paidBy: paidBy || undefined,
+      isPartnerHelp,
+      partnerPhone: isPartnerHelp ? (partnerPhone.trim() || undefined) : undefined,
+      partnerAmount: parsedPartnerAmount,
       billImage: billImage || undefined,
       billImageName: billImageName || undefined,
       usages: [],
@@ -229,6 +259,10 @@ export default function MaterialTracker({
     setBillImage('');
     setBillImageName('');
     setAlertThreshold('');
+    setIsPartnerHelp(false);
+    setPartnerMember('');
+    setPartnerPhone('');
+    setPartnerAmount('');
   };
 
   // Log Material Usage
@@ -616,6 +650,91 @@ export default function MaterialTracker({
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
               )}
+
+              {/* 🤝 Dedicated Partner Help / Financial Support Section */}
+              <div className="mt-2.5 p-3 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-xl space-y-2.5">
+                <label className="inline-flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300 font-extrabold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPartnerHelp}
+                    onChange={(e) => setIsPartnerHelp(e.target.checked)}
+                    className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span>🤝 Partner Help / Financial Support Provided</span>
+                </label>
+
+                {isPartnerHelp && (
+                  <div className="space-y-2.5 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                        Select Supporting Partner / Member Present in Project *
+                      </label>
+                      <select
+                        value={partnerMember}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPartnerMember(val);
+                          const foundPayer = payers.find(p => p.id === val || p.name === val);
+                          const foundLabour = labours.find(l => l.id === val || l.name === val);
+                          if (foundPayer?.phone) {
+                            setPartnerPhone(foundPayer.phone);
+                          } else if (foundLabour?.contact || foundLabour?.phone) {
+                            setPartnerPhone(foundLabour.contact || foundLabour.phone || '');
+                          }
+                        }}
+                        className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">-- Choose Member / Partner Who Gave Financial Help --</option>
+                        {labours && labours.length > 0 && (
+                          <optgroup label="👷 Project Members & Labour Registry">
+                            {labours.map((l) => (
+                              <option key={`phelp_lab_${l.id}`} value={l.name}>
+                                {l.name} {l.role || l.category ? `• ${String(l.role || l.category).toUpperCase()}` : ''} {(l.contact || l.phone) ? `(📞 ${l.contact || l.phone})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {payers && payers.length > 0 && (
+                          <optgroup label="🏢 Registered Financial Payers & Partners">
+                            {payers.map((p) => (
+                              <option key={`phelp_payer_${p.id}`} value={p.name}>
+                                {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Partner Phone Number
+                        </label>
+                        <input
+                          type="tel"
+                          value={partnerPhone}
+                          onChange={(e) => setPartnerPhone(e.target.value)}
+                          placeholder="e.g. 9876543210"
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-amber-800 dark:text-amber-400 uppercase tracking-wider mb-1">
+                          Financial Support Amount (₹)
+                        </label>
+                        <input
+                          type="number"
+                          value={partnerAmount}
+                          onChange={(e) => setPartnerAmount(e.target.value)}
+                          placeholder={cost ? `Default: ₹${cost}` : "e.g. 5000"}
+                          className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -1118,6 +1237,76 @@ export default function MaterialTracker({
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
                       />
                     )}
+
+                    {/* 🤝 Partner Support in Edit Modal */}
+                    <div className="mt-2 p-2.5 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 rounded-xl space-y-2">
+                      <label className="inline-flex items-center gap-2 text-xs text-amber-900 dark:text-amber-300 font-bold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editIsPartnerHelp}
+                          onChange={(e) => setEditIsPartnerHelp(e.target.checked)}
+                          className="rounded border-amber-400 text-amber-600 focus:ring-amber-500 w-3.5 h-3.5 cursor-pointer"
+                        />
+                        <span>🤝 Partner Help Provided</span>
+                      </label>
+
+                      {editIsPartnerHelp && (
+                        <div className="space-y-2 pt-1.5 border-t border-amber-200/60 dark:border-amber-900/40">
+                          <select
+                            value={editPartnerMember}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditPartnerMember(val);
+                              const foundPayer = payers.find(p => p.id === val || p.name === val);
+                              const foundLabour = labours.find(l => l.id === val || l.name === val);
+                              if (foundPayer?.phone) {
+                                setEditPartnerPhone(foundPayer.phone);
+                              } else if (foundLabour?.contact || foundLabour?.phone) {
+                                setEditPartnerPhone(foundLabour.contact || foundLabour.phone || '');
+                              }
+                            }}
+                            className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-lg px-2 py-1 text-xs font-bold text-slate-800 dark:text-slate-100"
+                          >
+                            <option value="">-- Choose Member / Partner --</option>
+                            {labours && labours.length > 0 && (
+                              <optgroup label="👷 Project Members & Labour Registry">
+                                {labours.map((l) => (
+                                  <option key={`e_phelp_lab_${l.id}`} value={l.name}>
+                                    {l.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                            {payers && payers.length > 0 && (
+                              <optgroup label="🏢 Registered Payers & Partners">
+                                {payers.map((p) => (
+                                  <option key={`e_phelp_payer_${p.id}`} value={p.name}>
+                                    {p.name}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </select>
+
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <input
+                              type="tel"
+                              value={editPartnerPhone}
+                              onChange={(e) => setEditPartnerPhone(e.target.value)}
+                              placeholder="Partner Phone"
+                              className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded px-2 py-1 text-xs font-mono"
+                            />
+                            <input
+                              type="number"
+                              value={editPartnerAmount}
+                              onChange={(e) => setEditPartnerAmount(e.target.value)}
+                              placeholder="Amount (₹)"
+                              className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded px-2 py-1 text-xs font-mono"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
