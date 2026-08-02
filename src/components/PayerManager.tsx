@@ -17,6 +17,8 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { Payer, Project, Advance, Payment, DailyExpense, HotelAdvance, Material, GstRecord, PettyCashEntry, PartnerDeal, Labour } from '../types';
 import { generateId } from '../utils/id';
+import { matchPayerOrLabour, parsePartnerSupportName } from '../utils/payerResolver';
+import { cleanEntityName, extractDigits } from '../utils/formatters';
 import { 
   Users, 
   Plus, 
@@ -147,55 +149,16 @@ export default function PayerManager({
       const rawRef = (payerRef || '').trim();
       if (!rawRef) return null;
 
-      const cleanedRef = rawRef.replace(/\s*\([^)]*\)/g, '').trim();
+      const cleanedRef = cleanEntityName(rawRef);
       const targetLower = cleanedRef.toLowerCase();
-      const targetFirstName = targetLower.split(' ')[0];
-      const rawDigits = rawRef.replace(/\D/g, '');
+      const rawDigits = extractDigits(rawRef);
 
-      // Find registered payer profile or labour member
-      const registered = payers.find(p => {
-        const pIdLower = p.id.toLowerCase();
-        const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        const pFirstName = pNameClean.split(' ')[0];
-        const pPhoneDigits = (p.phone || '').replace(/\D/g, '');
-
-        const phoneMatches = Boolean(
-          rawDigits && pPhoneDigits && rawDigits.length >= 6 && pPhoneDigits.length >= 6 &&
-          (pPhoneDigits === rawDigits || pPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(pPhoneDigits))
-        );
-
-        return p.id === rawRef || 
-               pIdLower === targetLower || 
-               pNameClean === targetLower ||
-               phoneMatches ||
-               (targetLower.length >= 3 && pNameClean.includes(targetLower)) ||
-               (pNameClean.length >= 3 && targetLower.includes(pNameClean)) ||
-               (targetFirstName.length >= 3 && pFirstName === targetFirstName);
-      });
-
-      const labourMember = !registered ? (labours || []).find(l => {
-        const lIdLower = l.id.toLowerCase();
-        const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        const lFirstName = lNameClean.split(' ')[0];
-        const lPhoneDigits = (l.contact || l.phone || '').replace(/\D/g, '');
-
-        const phoneMatches = Boolean(
-          rawDigits && lPhoneDigits && rawDigits.length >= 6 && lPhoneDigits.length >= 6 &&
-          (lPhoneDigits === rawDigits || lPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(lPhoneDigits))
-        );
-
-        return l.id === rawRef || 
-               lIdLower === targetLower || 
-               lNameClean === targetLower ||
-               phoneMatches ||
-               (targetLower.length >= 3 && lNameClean.includes(targetLower)) ||
-               (lNameClean.length >= 3 && targetLower.includes(lNameClean)) ||
-               (targetFirstName.length >= 3 && lFirstName === targetFirstName);
-      }) : undefined;
+      // Find registered payer profile or labour member using shared utility
+      const { registeredPayer: registered, labourMember } = matchPayerOrLabour(rawRef, payers, labours);
 
       const canonicalId = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
       const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || cleanedRef || rawRef));
-      const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+      const targetLowerName = cleanEntityName(displayName).toLowerCase();
 
       let resolvedKey = canonicalId;
       const targetPhone = (registered?.phone || labourMember?.contact || labourMember?.phone || '').trim().replace(/\D/g, '');
@@ -299,10 +262,9 @@ export default function PayerManager({
 
     // Helper to resolve partner support provider
     const resolvePartnerHelper = (partnerRef?: string, description?: string, notes?: string) => {
-      const fullText = `${description || ''} ${notes || ''}`;
-      const match = fullText.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
-      if (match && match[1]) {
-        const p = resolveEntryKey(match[1].trim());
+      const partnerName = parsePartnerSupportName(`${description || ''} ${notes || ''}`);
+      if (partnerName) {
+        const p = resolveEntryKey(partnerName);
         if (p) return p;
       }
       const rawRef = (partnerRef || '').trim();

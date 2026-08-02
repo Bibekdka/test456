@@ -10,6 +10,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { exportCompleteSiteZip } from '../utils/zipExporter';
+import { isPhoneDigitsMatch, matchPayerOrLabour } from '../utils/payerResolver';
+import { cleanEntityName, extractDigits } from '../utils/formatters';
 
 interface ReportGeneratorProps {
   activeProject: Project | null;
@@ -59,19 +61,15 @@ export default function ReportGenerator({
   const isPayerMatch = (explicitRef?: string, notes?: string, payer?: Payer) => {
     if (!payer) return false;
     const pId = payer.id.toLowerCase();
-    const pName = payer.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+    const pName = cleanEntityName(payer.name).toLowerCase();
     const pFirstName = pName.split(' ')[0];
-    const pPhoneDigits = (payer.phone || '').replace(/\D/g, '');
 
     const ref = (explicitRef || '').trim().toLowerCase();
-    const refClean = ref.replace(/\s*\([^)]*\)/g, '').trim();
+    const refClean = cleanEntityName(ref);
     const refFirstName = refClean.split(' ')[0];
-    const refDigits = ref.replace(/\D/g, '');
 
-    if (refDigits && refDigits.length >= 6 && pPhoneDigits && pPhoneDigits.length >= 6) {
-      if (pPhoneDigits === refDigits || pPhoneDigits.endsWith(refDigits) || refDigits.endsWith(pPhoneDigits)) {
-        return true;
-      }
+    if (isPhoneDigitsMatch(explicitRef, payer.phone)) {
+      return true;
     }
 
     if (ref) {

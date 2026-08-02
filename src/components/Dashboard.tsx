@@ -6,6 +6,8 @@ import {
   getAttendanceFoodDaysAndCost, getProjectScopeIds
 } from '../types';
 import { generateId } from '../utils/id';
+import { matchPayerOrLabour, parsePartnerSupportName } from '../utils/payerResolver';
+import { cleanEntityName, extractDigits } from '../utils/formatters';
 import { 
   Briefcase, Plus, Calendar, IndianRupee, Clock, Trash2, Edit, 
   TrendingUp, Users, Truck, Utensils, Percent, CircleDollarSign, 
@@ -362,55 +364,16 @@ export default function Dashboard({
       const rawKey = (payerKey || '').trim();
       if (!rawKey) return null;
 
-      const cleanedKey = rawKey.replace(/\s*\([^)]*\)/g, '').trim();
+      const cleanedKey = cleanEntityName(rawKey);
       const targetLower = cleanedKey.toLowerCase();
-      const targetFirstName = targetLower.split(' ')[0];
-      const rawDigits = rawKey.replace(/\D/g, '');
+      const rawDigits = extractDigits(rawKey);
 
       // Find registered payer or labour registry member by ID or flexible case-insensitive name/phone matching
-      const registered = (payers || []).find(p => {
-        const pIdLower = p.id.toLowerCase();
-        const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        const pFirstName = pNameClean.split(' ')[0];
-        const pPhoneDigits = (p.phone || '').replace(/\D/g, '');
-
-        const phoneMatches = Boolean(
-          rawDigits && pPhoneDigits && rawDigits.length >= 6 && pPhoneDigits.length >= 6 &&
-          (pPhoneDigits === rawDigits || pPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(pPhoneDigits))
-        );
-
-        return p.id === rawKey || 
-               pIdLower === targetLower || 
-               pNameClean === targetLower ||
-               phoneMatches ||
-               (targetLower.length >= 3 && pNameClean.includes(targetLower)) ||
-               (pNameClean.length >= 3 && targetLower.includes(pNameClean)) ||
-               (targetFirstName.length >= 3 && pFirstName === targetFirstName);
-      });
-
-      const labourMember = !registered ? (labours || []).find(l => {
-        const lIdLower = l.id.toLowerCase();
-        const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        const lFirstName = lNameClean.split(' ')[0];
-        const lPhoneDigits = (l.contact || l.phone || '').replace(/\D/g, '');
-
-        const phoneMatches = Boolean(
-          rawDigits && lPhoneDigits && rawDigits.length >= 6 && lPhoneDigits.length >= 6 &&
-          (lPhoneDigits === rawDigits || lPhoneDigits.endsWith(rawDigits) || rawDigits.endsWith(lPhoneDigits))
-        );
-
-        return l.id === rawKey || 
-               lIdLower === targetLower || 
-               lNameClean === targetLower ||
-               phoneMatches ||
-               (targetLower.length >= 3 && lNameClean.includes(targetLower)) ||
-               (lNameClean.length >= 3 && targetLower.includes(lNameClean)) ||
-               (targetFirstName.length >= 3 && lFirstName === targetFirstName);
-      }) : undefined;
+      const { registeredPayer: registered, labourMember } = matchPayerOrLabour(rawKey, payers || [], labours || []);
 
       const canonicalKey = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
       const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || cleanedKey || rawKey));
-      const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+      const targetLowerName = cleanEntityName(displayName).toLowerCase();
 
       // Check if map already has this canonical key OR if any existing entry shares the same name or phone number
       let resolvedKey = canonicalKey;
@@ -506,10 +469,9 @@ export default function Dashboard({
     };
 
     const resolvePartnerHelperPayer = (partnerRef?: string, description?: string, notes?: string) => {
-      const fullText = `${description || ''} ${notes || ''}`;
-      const match = fullText.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
-      if (match && match[1]) {
-        const p = resolvePayerKey(match[1].trim());
+      const partnerName = parsePartnerSupportName(`${description || ''} ${notes || ''}`);
+      if (partnerName) {
+        const p = resolvePayerKey(partnerName);
         if (p) return p;
       }
       const rawRef = (partnerRef || '').trim();
