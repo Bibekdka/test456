@@ -7,6 +7,12 @@ import React, { useState, useMemo } from 'react';
 import { Project, Labour, Attendance, Advance, Payment, Payer, getLabourDaysWorked, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
 import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
+import { 
   IndianRupee, 
   Calendar, 
   Landmark, 
@@ -49,8 +55,9 @@ export default function LabourPaymentCalculator({
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
   const [ledgerType, setLedgerType] = useState<'all' | 'payouts' | 'advances'>('all');
-  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
+  const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'monthly-desc' | 'monthly-asc' | 'amount-desc' | 'amount-asc'>('date-desc');
 
   const [selectedLabourId, setSelectedLabourId] = useState('');
   const [payAmount, setPayAmount] = useState('');
@@ -212,6 +219,11 @@ export default function LabourPaymentCalculator({
     })
   ];
 
+  // Extract unique months for filter dropdown
+  const availableLedgerMonths = useMemo(() => {
+    return extractUniqueMonths(ledgerItems, (item) => item.date);
+  }, [ledgerItems]);
+
   // Apply filters
   const filteredLedgerItems = ledgerItems.filter(item => {
     if (searchTerm.trim() !== '') {
@@ -222,6 +234,7 @@ export default function LabourPaymentCalculator({
     }
     if (startDate && item.date < startDate) return false;
     if (endDate && item.date > endDate) return false;
+    if (filterMonth !== 'all' && !item.date.startsWith(filterMonth)) return false;
     if (ledgerType === 'payouts' && item.type !== 'payout') return false;
     if (ledgerType === 'advances' && item.type !== 'advance') return false;
     return true;
@@ -231,6 +244,18 @@ export default function LabourPaymentCalculator({
   const sortedLedgerItems = [...filteredLedgerItems].sort((a, b) => {
     if (sortBy === 'date-desc') return b.date.localeCompare(a.date);
     if (sortBy === 'date-asc') return a.date.localeCompare(b.date);
+    if (sortBy === 'monthly-desc') {
+      const monthA = a.date.substring(0, 7);
+      const monthB = b.date.substring(0, 7);
+      if (monthA !== monthB) return monthB.localeCompare(monthA);
+      return b.date.localeCompare(a.date);
+    }
+    if (sortBy === 'monthly-asc') {
+      const monthA = a.date.substring(0, 7);
+      const monthB = b.date.substring(0, 7);
+      if (monthA !== monthB) return monthA.localeCompare(monthB);
+      return a.date.localeCompare(b.date);
+    }
     if (sortBy === 'amount-desc') return b.amount - a.amount;
     if (sortBy === 'amount-asc') return a.amount - b.amount;
     return 0;
@@ -798,8 +823,8 @@ export default function LabourPaymentCalculator({
               </button>
             </div>
 
-            {/* Inputs: Search, Dates, Sorting */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Inputs: Search, Month, Dates, Sorting */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
                 <input
@@ -809,6 +834,19 @@ export default function LabourPaymentCalculator({
                   placeholder="Search worker name, notes..."
                   className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 text-slate-700"
                 />
+              </div>
+
+              <div>
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white text-slate-700 font-medium"
+                >
+                  <option value="all">All Months ({availableLedgerMonths.length})</option>
+                  {availableLedgerMonths.map(m => (
+                    <option key={`m-${m.key}`} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -841,6 +879,8 @@ export default function LabourPaymentCalculator({
                 >
                   <option value="date-desc">Sort: Date (Newest first)</option>
                   <option value="date-asc">Sort: Date (Oldest first)</option>
+                  <option value="monthly-desc">Sort: Monthly Order (Latest Month First)</option>
+                  <option value="monthly-asc">Sort: Monthly Order (Earliest Month First)</option>
                   <option value="amount-desc">Sort: Amount (Highest first)</option>
                   <option value="amount-asc">Sort: Amount (Lowest first)</option>
                 </select>

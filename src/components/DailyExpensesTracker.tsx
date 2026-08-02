@@ -1,6 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { Project, Labour, Payer, DailyExpense } from '../types';
 import { generateId } from '../utils/id';
+import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
 import { 
   IndianRupee, 
   Plus, 
@@ -87,6 +93,8 @@ export default function DailyExpensesTracker({
   const [filterSubCategory, setFilterSubCategory] = useState<string>('all');
   const [filterLabourId, setFilterLabourId] = useState<string>('all');
   const [filterPayerId, setFilterPayerId] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<LedgerSortOrder>('newest');
 
   // Receipt Modal/Lightbox states
   const [viewingReceipt, setViewingReceipt] = useState<{ url: string; name: string } | null>(null);
@@ -297,27 +305,37 @@ export default function DailyExpensesTracker({
     handleCancel();
   };
 
-  // Filtering logic
-  const filteredExpenses = projectExpenses.filter(e => {
-    // Search Description
-    const matchesSearch = e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (labours.find(l => l.id === e.labourId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (payers.find(p => p.id === e.payerId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+  // Extract available months for filter dropdown
+  const availableMonths = useMemo(() => {
+    return extractUniqueMonths(projectExpenses, (e) => e.date);
+  }, [projectExpenses]);
 
-    // Category
-    const matchesCategory = filterCategory === 'all' || e.category === filterCategory;
+  // Filtering and sorting logic
+  const filteredExpenses = useMemo(() => {
+    const matched = projectExpenses.filter(e => {
+      // Search Description
+      const matchesSearch = e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (labours.find(l => l.id === e.labourId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (payers.find(p => p.id === e.payerId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
-    // Sub-category
-    const matchesSubCategory = filterSubCategory === 'all' || e.subCategory === filterSubCategory;
+      // Category
+      const matchesCategory = filterCategory === 'all' || e.category === filterCategory;
 
-    // Worker/Labour
-    const matchesLabour = filterLabourId === 'all' || e.labourId === filterLabourId;
+      // Sub-category
+      const matchesSubCategory = filterSubCategory === 'all' || e.subCategory === filterSubCategory;
 
-    // Payer
-    const matchesPayer = filterPayerId === 'all' || e.payerId === filterPayerId;
+      // Worker/Labour
+      const matchesLabour = filterLabourId === 'all' || e.labourId === filterLabourId;
 
-    return matchesSearch && matchesCategory && matchesSubCategory && matchesLabour && matchesPayer;
-  });
+      // Payer
+      const matchesPayer = filterPayerId === 'all' || e.payerId === filterPayerId;
+
+      return matchesSearch && matchesCategory && matchesSubCategory && matchesLabour && matchesPayer;
+    });
+
+    const monthFiltered = filterRecordsByMonth(matched, (e) => e.date, filterMonth);
+    return sortRecords(monthFiltered, (e) => e.date, (e) => e.amount, sortOrder);
+  }, [projectExpenses, searchTerm, filterCategory, filterSubCategory, filterLabourId, filterPayerId, filterMonth, sortOrder, labours, payers]);
 
   // Get localized sub-category label
   const getSubCatLabel = (cat: 'labour_expense' | 'misc_transaction', val: string) => {
@@ -940,6 +958,38 @@ export default function DailyExpensesTracker({
               {payers.map(p => (
                 <option key={`f-pay-${p.id}`} value={p.id}>{p.name}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Month Filter */}
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Filter Month</span>
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-600 focus:outline-none"
+            >
+              <option value="all">All Months</option>
+              {availableMonths.map(m => (
+                <option key={`m-${m.key}`} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sort Order */}
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Sort Order</span>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as LedgerSortOrder)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-600 focus:outline-none font-sans"
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="monthly_desc">Monthly Order (Latest Month First)</option>
+              <option value="monthly_asc">Monthly Order (Earliest Month First)</option>
+              <option value="amount_high">Highest Amount First</option>
+              <option value="amount_low">Lowest Amount First</option>
             </select>
           </div>
         </div>

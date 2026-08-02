@@ -3,9 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Project, Material, MaterialUsage, Payer, Labour } from '../types';
 import { generateId } from '../utils/id';
+import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
 import { Truck, Plus, Calendar, DollarSign, Image, PackageOpen, ClipboardList, Trash2, CheckCircle2, Eye, Upload, X, Pencil, AlertTriangle, ChevronDown, ChevronUp, UserCheck } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
@@ -338,8 +344,21 @@ export default function MaterialTracker({
     setConfirmDeleteMaterial(null);
   };
 
+  // Month & Sort filters
+  const [monthFilter, setMonthFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<LedgerSortOrder>('newest');
+
   // Filter materials for the selected project
   const projectMaterials = materials.filter(m => m.projectId === activeProject.id);
+
+  const availableMonths = useMemo(() => {
+    return extractUniqueMonths<Material>(projectMaterials, (m) => m.dateBought);
+  }, [projectMaterials]);
+
+  const displayedMaterials = useMemo(() => {
+    const monthFiltered = filterRecordsByMonth<Material>(projectMaterials, (m) => m.dateBought, monthFilter);
+    return sortRecords<Material>(monthFiltered, (m) => m.dateBought, (m) => m.cost, sortOrder);
+  }, [projectMaterials, monthFilter, sortOrder]);
 
   const lowStockMaterials = projectMaterials.filter(m => {
     if (m.alertThreshold === undefined || m.alertThreshold === null) return false;
@@ -815,8 +834,51 @@ export default function MaterialTracker({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {projectMaterials.map((m) => {
+        <div className="space-y-4">
+          {/* Header & Month Filter Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-2">
+              <ClipboardList className="w-4 h-4 text-slate-500" />
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Material Inventory Items ({displayedMaterials.length})
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+                className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700 shadow-2xs"
+              >
+                <option value="all">All Acquisition Months ({availableMonths.length})</option>
+                {availableMonths.map(m => (
+                  <option key={`mat-${m.key}`} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as LedgerSortOrder)}
+                className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700 shadow-2xs"
+              >
+                <option value="newest">Sort: Newest Acquired</option>
+                <option value="oldest">Sort: Oldest Acquired</option>
+                <option value="monthly_desc">Sort: Monthly Order (Latest Month First)</option>
+                <option value="monthly_asc">Sort: Monthly Order (Earliest Month First)</option>
+                <option value="amount_high">Sort: Total Cost (Highest First)</option>
+                <option value="amount_low">Sort: Total Cost (Lowest First)</option>
+              </select>
+            </div>
+          </div>
+
+          {displayedMaterials.length === 0 ? (
+            <div className="bg-white border border-dashed border-slate-200 rounded-xl p-8 text-center text-slate-400 space-y-1">
+              <p className="text-xs font-semibold text-slate-600">No material acquisitions found matching selected month filter.</p>
+              <p className="text-[11px]">Try switching the month filter to 'All Acquisition Months'.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {displayedMaterials.map((m) => {
             const totalUsed = m.usages.reduce((sum, u) => sum + u.quantityUsed, 0);
             const remaining = m.quantityBought - totalUsed;
             const usePercent = Math.min((totalUsed / m.quantityBought) * 100, 100);
@@ -1050,6 +1112,8 @@ export default function MaterialTracker({
           })}
         </div>
       )}
+    </div>
+  )}
 
       {/* Bill Receipt Lightbox Modal */}
       {lightboxImage && (

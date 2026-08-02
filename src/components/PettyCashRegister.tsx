@@ -2,6 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { Project, PettyCashEntry, Payer, getProjectScopeIds } from '../types';
 import { generateId } from '../utils/id';
 import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
+import { 
   Wallet, 
   Plus, 
   ArrowUpRight, 
@@ -60,6 +66,8 @@ export default function PettyCashRegister({
   const [supervisorFilter, setSupervisorFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'top_up' | 'expense'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [monthFilter, setMonthFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<LedgerSortOrder>('newest');
 
   // Form Fields
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -83,7 +91,7 @@ export default function PettyCashRegister({
   }, [activeProject, projects]);
 
   // Scoped Petty Cash Entries
-  const currentEntries = useMemo(() => {
+  const currentEntries = useMemo<PettyCashEntry[]>(() => {
     return pettyCashEntries
       .filter(e => scopedProjectIds.includes(e.projectId))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -98,9 +106,14 @@ export default function PettyCashRegister({
     return Array.from(set);
   }, [currentEntries]);
 
-  // Filtered Entries
+  // Available Unique Months
+  const availableMonths = useMemo(() => {
+    return extractUniqueMonths<PettyCashEntry>(currentEntries, (e) => e.date);
+  }, [currentEntries]);
+
+  // Filtered & Sorted Entries
   const filteredEntries = useMemo(() => {
-    return currentEntries.filter(e => {
+    const matched = currentEntries.filter(e => {
       const matchSearch = 
         !searchQuery || 
         e.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -112,7 +125,10 @@ export default function PettyCashRegister({
 
       return matchSearch && matchSupervisor && matchType && matchCategory;
     });
-  }, [currentEntries, searchQuery, supervisorFilter, typeFilter, categoryFilter]);
+
+    const monthFiltered = filterRecordsByMonth<PettyCashEntry>(matched, (e) => e.date, monthFilter);
+    return sortRecords<PettyCashEntry>(monthFiltered, (e) => e.date, (e) => e.amount, sortOrder);
+  }, [currentEntries, searchQuery, supervisorFilter, typeFilter, categoryFilter, monthFilter, sortOrder]);
 
   // Financial Stats & Supervisor Balances
   const stats = useMemo(() => {
@@ -448,6 +464,18 @@ export default function PettyCashRegister({
               />
             </div>
 
+            {/* Month Filter */}
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+            >
+              <option value="all">All Months ({availableMonths.length})</option>
+              {availableMonths.map(m => (
+                <option key={`m-${m.key}`} value={m.key}>{m.label}</option>
+              ))}
+            </select>
+
             {/* Supervisor Filter */}
             <select
               value={supervisorFilter}
@@ -485,6 +513,20 @@ export default function PettyCashRegister({
               <option value="emergency_labour">Emergency Labour</option>
               <option value="top_up">Cash Top-Up</option>
               <option value="other">Other / Misc</option>
+            </select>
+
+            {/* Sort Order */}
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as LedgerSortOrder)}
+              className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+            >
+              <option value="newest">Sort: Newest First</option>
+              <option value="oldest">Sort: Oldest First</option>
+              <option value="monthly_desc">Sort: Monthly Order (Latest Month First)</option>
+              <option value="monthly_asc">Sort: Monthly Order (Earliest Month First)</option>
+              <option value="amount_high">Sort: Amount (Highest First)</option>
+              <option value="amount_low">Sort: Amount (Lowest First)</option>
             </select>
           </div>
 

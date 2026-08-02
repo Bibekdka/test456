@@ -21,6 +21,12 @@ import { calculateConsolidatedPayerFinancials } from '../utils/payerFinancials';
 import { matchPayerOrLabour, parsePartnerSupportName } from '../utils/payerResolver';
 import { cleanEntityName, extractDigits } from '../utils/formatters';
 import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
+import { 
   Users, 
   Plus, 
   Edit3, 
@@ -60,6 +66,18 @@ import {
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
+interface PayerTransactionItem {
+  id: string;
+  payerName: string;
+  payerRole: string;
+  date: string;
+  category: string;
+  projectId: string;
+  projectName: string;
+  description: string;
+  amount: number;
+}
+
 interface PayerManagerProps {
   payers: Payer[];
   projects: Project[];
@@ -97,6 +115,8 @@ export default function PayerManager({
 }: PayerManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [ledgerMonthFilter, setLedgerMonthFilter] = useState<string>('all');
+  const [ledgerSortOrder, setLedgerSortOrder] = useState<LedgerSortOrder>('newest');
   const [expandedPayerId, setExpandedPayerId] = useState<string | null>(null);
   const [hoveredBreakdownPayerId, setHoveredBreakdownPayerId] = useState<string | null>(null);
 
@@ -404,18 +424,8 @@ export default function PayerManager({
   }, [rankedPayersList]);
 
   // Combined itemized transactions across all filtered disbursers for export & print
-  const allFilteredTransactions = useMemo(() => {
-    const list: Array<{
-      id: string;
-      payerName: string;
-      payerRole: string;
-      date: string;
-      category: string;
-      projectId: string;
-      projectName: string;
-      description: string;
-      amount: number;
-    }> = [];
+  const allFilteredTransactions = useMemo<PayerTransactionItem[]>(() => {
+    const list: PayerTransactionItem[] = [];
 
     filteredPayers.forEach(p => {
       let txs = p.transactions;
@@ -439,6 +449,17 @@ export default function PayerManager({
 
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [filteredPayers, projectFilter]);
+
+  // Available unique months across all filtered transactions
+  const availableLedgerMonths = useMemo(() => {
+    return extractUniqueMonths<PayerTransactionItem>(allFilteredTransactions, (t) => t.date);
+  }, [allFilteredTransactions]);
+
+  // Filtered and sorted transactions according to selected month and order
+  const displayedTransactions = useMemo(() => {
+    const monthFiltered = filterRecordsByMonth<PayerTransactionItem>(allFilteredTransactions, (t) => t.date, ledgerMonthFilter);
+    return sortRecords<PayerTransactionItem>(monthFiltered, (t) => t.date, (t) => t.amount, ledgerSortOrder);
+  }, [allFilteredTransactions, ledgerMonthFilter, ledgerSortOrder]);
 
   // EXPORT ALL METRICS TO PDF REPORT
   const handleExportPDF = () => {
@@ -2101,34 +2122,73 @@ export default function PayerManager({
 
         {/* 4. ITEMIZED TRANSACTIONS LEDGER */}
         {allFilteredTransactions.length > 0 && (
-          <div className="space-y-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 border-b border-slate-300 pb-1">
-              4. Itemized Outlays Log ({allFilteredTransactions.length} Transactions)
-            </h2>
-            <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
-              <thead className="bg-slate-100 text-slate-800 font-bold uppercase text-[9px]">
-                <tr>
-                  <th className="p-1.5 border border-slate-300">Date</th>
-                  <th className="p-1.5 border border-slate-300">Disburser Name</th>
-                  <th className="p-1.5 border border-slate-300">Category</th>
-                  <th className="p-1.5 border border-slate-300">Construction Site</th>
-                  <th className="p-1.5 border border-slate-300">Description / Details</th>
-                  <th className="p-1.5 border border-slate-300 text-right">Amount (₹)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allFilteredTransactions.map((t, idx) => (
-                  <tr key={t.id + idx} className="border-b border-slate-200">
-                    <td className="p-1.5 border border-slate-300 font-mono">{formatDateSafe(t.date)}</td>
-                    <td className="p-1.5 border border-slate-300 font-bold">{t.payerName}</td>
-                    <td className="p-1.5 border border-slate-300">{t.category}</td>
-                    <td className="p-1.5 border border-slate-300">{t.projectName}</td>
-                    <td className="p-1.5 border border-slate-300">{t.description}</td>
-                    <td className="p-1.5 border border-slate-300 text-right font-mono font-bold">₹{t.amount.toLocaleString('en-IN')}</td>
+          <div className="space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-300 pb-1.5">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                <span>4. Itemized Outlays Log ({displayedTransactions.length} of {allFilteredTransactions.length} Transactions)</span>
+              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Month:</span>
+                  <select
+                    value={ledgerMonthFilter}
+                    onChange={(e) => setLedgerMonthFilter(e.target.value)}
+                    className="bg-white border border-slate-300 rounded px-2 py-1 text-[11px] font-semibold text-slate-700 focus:outline-none"
+                  >
+                    <option value="all">All Months ({availableLedgerMonths.length})</option>
+                    {availableLedgerMonths.map(m => (
+                      <option key={`m-${m.key}`} value={m.key}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase">Sort Order:</span>
+                  <select
+                    value={ledgerSortOrder}
+                    onChange={(e) => setLedgerSortOrder(e.target.value as LedgerSortOrder)}
+                    className="bg-white border border-slate-300 rounded px-2 py-1 text-[11px] font-semibold text-slate-700 focus:outline-none"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="monthly_desc">Monthly Order (Latest Month First)</option>
+                    <option value="monthly_asc">Monthly Order (Earliest Month First)</option>
+                    <option value="amount_high">Highest Amount First</option>
+                    <option value="amount_low">Lowest Amount First</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {displayedTransactions.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500 bg-slate-50 rounded border border-slate-200">
+                No transactions found for the selected month filter.
+              </div>
+            ) : (
+              <table className="w-full text-left text-[11px] border border-slate-300 border-collapse">
+                <thead className="bg-slate-100 text-slate-800 font-bold uppercase text-[9px]">
+                  <tr>
+                    <th className="p-1.5 border border-slate-300">Date</th>
+                    <th className="p-1.5 border border-slate-300">Disburser Name</th>
+                    <th className="p-1.5 border border-slate-300">Category</th>
+                    <th className="p-1.5 border border-slate-300">Construction Site</th>
+                    <th className="p-1.5 border border-slate-300">Description / Details</th>
+                    <th className="p-1.5 border border-slate-300 text-right">Amount (₹)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {displayedTransactions.map((t, idx) => (
+                    <tr key={t.id + idx} className="border-b border-slate-200">
+                      <td className="p-1.5 border border-slate-300 font-mono">{formatDateSafe(t.date)}</td>
+                      <td className="p-1.5 border border-slate-300 font-bold">{t.payerName}</td>
+                      <td className="p-1.5 border border-slate-300">{t.category}</td>
+                      <td className="p-1.5 border border-slate-300">{t.projectName}</td>
+                      <td className="p-1.5 border border-slate-300">{t.description}</td>
+                      <td className="p-1.5 border border-slate-300 text-right font-mono font-bold">₹{t.amount.toLocaleString('en-IN')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>

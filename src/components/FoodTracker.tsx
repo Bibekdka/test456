@@ -1,6 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Project, Labour, HotelAdvance, FoodLog, Attendance, Payer, getAutoFoodDaysAndCost, getAttendanceFoodDaysAndCost, isLabourInProjectScope } from '../types';
 import { generateId } from '../utils/id';
+import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
 import { Plus, Trash2, Utensils, IndianRupee, AlertCircle, Calendar, MessageSquare, History, PiggyBank, Receipt, Users, CheckCircle2, Edit2, Check, X, CalendarDays, UserCheck } from 'lucide-react';
 import CustomerMealCalendar from './CustomerMealCalendar';
 
@@ -70,6 +76,12 @@ export default function FoodTracker({
   const [partnerMember, setPartnerMember] = useState('');
   const [partnerPhone, setPartnerPhone] = useState('');
   const [partnerAmount, setPartnerAmount] = useState('');
+
+  // Month & Sort filters for Food Logs and Hotel Advances
+  const [mealsMonthFilter, setMealsMonthFilter] = useState<string>('all');
+  const [mealsSortOrder, setMealsSortOrder] = useState<LedgerSortOrder>('newest');
+  const [advancesMonthFilter, setAdvancesMonthFilter] = useState<string>('all');
+  const [advancesSortOrder, setAdvancesSortOrder] = useState<LedgerSortOrder>('newest');
 
   // Food Log Form
   const [selectedLabourId, setSelectedLabourId] = useState('');
@@ -180,6 +192,26 @@ export default function FoodTracker({
   // Filter lists for active project
   const projectAdvances = hotelAdvances.filter(a => a.projectId === activeProject.id);
   const projectFoodLogs = foodLogs.filter(f => f.projectId === activeProject.id);
+
+  // Available months and filtered/sorted meals
+  const availableMealsMonths = useMemo(() => {
+    return extractUniqueMonths(projectFoodLogs, (f) => f.date);
+  }, [projectFoodLogs]);
+
+  const displayedFoodLogs = useMemo(() => {
+    const monthFiltered = filterRecordsByMonth(projectFoodLogs, (f) => f.date, mealsMonthFilter);
+    return sortRecords(monthFiltered, (f) => f.date, (f) => f.mealsCount * f.cost, mealsSortOrder);
+  }, [projectFoodLogs, mealsMonthFilter, mealsSortOrder]);
+
+  // Available months and filtered/sorted advances
+  const availableAdvancesMonths = useMemo(() => {
+    return extractUniqueMonths(projectAdvances, (a) => a.date);
+  }, [projectAdvances]);
+
+  const displayedHotelAdvances = useMemo(() => {
+    const monthFiltered = filterRecordsByMonth(projectAdvances, (a) => a.date, advancesMonthFilter);
+    return sortRecords(monthFiltered, (a) => a.date, (a) => a.amount, advancesSortOrder);
+  }, [projectAdvances, advancesMonthFilter, advancesSortOrder]);
   
   const projectLabours = labours
     .filter(l => isLabourInProjectScope(
@@ -1130,21 +1162,43 @@ export default function FoodTracker({
 
           {/* Meals log history table */}
           <div className="lg:col-span-2 border border-slate-200 rounded-xl overflow-hidden flex flex-col">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                 <History className="w-4 h-4 text-slate-500" />
-                Meals Deduction History
+                Meals Deduction History ({displayedFoodLogs.length})
               </h3>
-              <span className="text-[10px] bg-slate-200 text-slate-800 font-mono font-bold px-2 py-0.5 rounded-full">
-                {projectFoodLogs.length} Records
-              </span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={mealsMonthFilter}
+                  onChange={(e) => setMealsMonthFilter(e.target.value)}
+                  className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+                >
+                  <option value="all">All Months ({availableMealsMonths.length})</option>
+                  {availableMealsMonths.map(m => (
+                    <option key={`mm-${m.key}`} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={mealsSortOrder}
+                  onChange={(e) => setMealsSortOrder(e.target.value as LedgerSortOrder)}
+                  className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+                >
+                  <option value="newest">Sort: Newest First</option>
+                  <option value="oldest">Sort: Oldest First</option>
+                  <option value="monthly_desc">Sort: Monthly Order (Latest Month First)</option>
+                  <option value="monthly_asc">Sort: Monthly Order (Earliest Month First)</option>
+                  <option value="amount_high">Sort: Deduction (Highest First)</option>
+                  <option value="amount_low">Sort: Deduction (Lowest First)</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex-1 overflow-x-auto">
-              {projectFoodLogs.length === 0 ? (
+              {displayedFoodLogs.length === 0 ? (
                 <div className="text-center py-16 text-slate-400 space-y-2">
                   <Utensils className="w-10 h-10 mx-auto opacity-40" />
-                  <p className="text-xs font-medium">No meals logged for this project yet.</p>
+                  <p className="text-xs font-medium">No meals logged matching selected month/filter.</p>
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
@@ -1159,9 +1213,7 @@ export default function FoodTracker({
                     </tr>
                   </thead>
                   <tbody>
-                    {projectFoodLogs
-                      .sort((a, b) => b.date.localeCompare(a.date))
-                      .map((log) => {
+                    {displayedFoodLogs.map((log) => {
                         const totalDeducted = log.mealsCount * log.cost;
 
                         if (editingLogId === log.id) {
@@ -1511,21 +1563,43 @@ export default function FoodTracker({
 
           {/* Advances list history */}
           <div className="lg:col-span-2 border border-slate-200 rounded-xl overflow-hidden flex flex-col">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
               <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
                 <History className="w-4 h-4 text-slate-500" />
-                Hotel Advances Registry
+                Hotel Advances Registry ({displayedHotelAdvances.length})
               </h3>
-              <span className="text-[10px] bg-indigo-50 text-indigo-700 font-mono font-bold px-2 py-0.5 rounded-full">
-                ₹ {totalAdvances.toLocaleString()} Total Paid
-              </span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={advancesMonthFilter}
+                  onChange={(e) => setAdvancesMonthFilter(e.target.value)}
+                  className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+                >
+                  <option value="all">All Months ({availableAdvancesMonths.length})</option>
+                  {availableAdvancesMonths.map(m => (
+                    <option key={`am-${m.key}`} value={m.key}>{m.label}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={advancesSortOrder}
+                  onChange={(e) => setAdvancesSortOrder(e.target.value as LedgerSortOrder)}
+                  className="bg-white border border-slate-200 text-xs font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+                >
+                  <option value="newest">Sort: Newest First</option>
+                  <option value="oldest">Sort: Oldest First</option>
+                  <option value="monthly_desc">Sort: Monthly Order (Latest Month First)</option>
+                  <option value="monthly_asc">Sort: Monthly Order (Earliest Month First)</option>
+                  <option value="amount_high">Sort: Amount Paid (Highest First)</option>
+                  <option value="amount_low">Sort: Amount Paid (Lowest First)</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex-1 overflow-x-auto">
-              {projectAdvances.length === 0 ? (
+              {displayedHotelAdvances.length === 0 ? (
                 <div className="text-center py-16 text-slate-400 space-y-2">
                   <PiggyBank className="w-10 h-10 mx-auto opacity-40" />
-                  <p className="text-xs font-medium">No hotel advances added yet.</p>
+                  <p className="text-xs font-medium">No hotel advances matching selected month/filter.</p>
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
@@ -1540,9 +1614,7 @@ export default function FoodTracker({
                     </tr>
                   </thead>
                   <tbody>
-                    {projectAdvances
-                      .sort((a, b) => b.date.localeCompare(a.date))
-                      .map((adv) => {
+                    {displayedHotelAdvances.map((adv) => {
                         const isEditingThis = editingAdvanceId === adv.id;
 
                         if (isEditingThis) {

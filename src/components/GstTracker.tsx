@@ -1,5 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Project, GstRecord, Payer } from '../types';
+import { 
+  extractUniqueMonths, 
+  filterRecordsByMonth, 
+  sortRecords, 
+  LedgerSortOrder 
+} from '../utils/monthUtils';
 import { 
   Plus, 
   Trash2, 
@@ -40,6 +46,8 @@ export default function GstTracker({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'paid' | 'claimed'>('all');
   const [filterRate, setFilterRate] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [sortOrder, setSortOrder] = useState<LedgerSortOrder>('newest');
 
   // Editing State
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -73,19 +81,29 @@ export default function GstTracker({
   // Filter for active project
   const projectGstRecords = gstRecords.filter(r => r.projectId === activeProject.id);
 
-  // Apply filters
-  const filteredRecords = projectGstRecords.filter(rec => {
-    const matchesSearch = 
-      rec.partyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      rec.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (rec.gstin && rec.gstin.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (rec.notes && rec.notes.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesType = filterType === 'all' || rec.type === filterType;
-    const matchesRate = filterRate === 'all' || rec.gstRate === Number(filterRate);
+  // Available unique months
+  const availableMonths = useMemo(() => {
+    return extractUniqueMonths(projectGstRecords, (r) => r.date);
+  }, [projectGstRecords]);
 
-    return matchesSearch && matchesType && matchesRate;
-  });
+  // Apply filters and sort
+  const filteredRecords = useMemo(() => {
+    const matched = projectGstRecords.filter(rec => {
+      const matchesSearch = 
+        rec.partyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        rec.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (rec.gstin && rec.gstin.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (rec.notes && rec.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+      
+      const matchesType = filterType === 'all' || rec.type === filterType;
+      const matchesRate = filterRate === 'all' || rec.gstRate === Number(filterRate);
+
+      return matchesSearch && matchesType && matchesRate;
+    });
+
+    const monthFiltered = filterRecordsByMonth(matched, (r) => r.date, filterMonth);
+    return sortRecords(monthFiltered, (r) => r.date, (r) => r.amount + r.gstAmount, sortOrder);
+  }, [projectGstRecords, searchTerm, filterType, filterRate, filterMonth, sortOrder]);
 
   // Calculations
   const totalPaidTaxable = projectGstRecords
@@ -559,6 +577,18 @@ export default function GstTracker({
                 <option value="claimed">Collected</option>
               </select>
 
+              {/* Month Filter */}
+              <select
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+              >
+                <option value="all">All Months ({availableMonths.length})</option>
+                {availableMonths.map(m => (
+                  <option key={`m-${m.key}`} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+
               {/* Rate Filter */}
               <select
                 value={filterRate}
@@ -571,6 +601,20 @@ export default function GstTracker({
                 <option value="12">12%</option>
                 <option value="18">18%</option>
                 <option value="28">28%</option>
+              </select>
+
+              {/* Sort Order */}
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as LedgerSortOrder)}
+                className="bg-slate-50 border border-slate-200 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700"
+              >
+                <option value="newest">Sort: Newest First</option>
+                <option value="oldest">Sort: Oldest First</option>
+                <option value="monthly_desc">Sort: Monthly Order (Latest Month First)</option>
+                <option value="monthly_asc">Sort: Monthly Order (Earliest Month First)</option>
+                <option value="amount_high">Sort: Gross Total (Highest First)</option>
+                <option value="amount_low">Sort: Gross Total (Lowest First)</option>
               </select>
             </div>
           </div>
