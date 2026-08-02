@@ -275,27 +275,115 @@ export default function PayerManager({
       return null;
     };
 
+    // Helper to resolve partner support provider
+    const resolvePartnerHelper = (partnerRef?: string, description?: string, notes?: string) => {
+      const rawRef = (partnerRef || '').trim();
+      if (rawRef) {
+        const p = resolveEntryKey(rawRef);
+        if (p) return p;
+      }
+      const fullText = `${description || ''} ${notes || ''}`;
+      const match = fullText.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
+      if (match && match[1]) {
+        const p = resolveEntryKey(match[1].trim());
+        if (p) return p;
+      }
+      return null;
+    };
+
     // 1. Labour Micro Advances
     advanceRecords.forEach(adv => {
-      const entry = resolveEntryKey(adv.paidBy, adv.description);
-      if (entry) {
+      const totalAmount = Number(adv.amount) || 0;
+      if (adv.isPartnerHelp) {
         const partnerVal = Number(adv.partnerAmount);
-        const actualAmount = (adv.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(adv.amount) || 0);
-        entry.totalDisbursed += actualAmount;
-        entry.advancesTotal += actualAmount;
-        entry.transactionCount += 1;
-        const curr = entry.projectAmounts.get(adv.projectId) || 0;
-        entry.projectAmounts.set(adv.projectId, curr + actualAmount);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-        entry.transactions.push({
-          id: adv.id,
-          date: adv.date,
-          category: 'Labour Advance',
-          projectId: adv.projectId,
-          projectName: getProjectName(adv.projectId),
-          description: `${adv.description || 'Labour Micro Advance'}${adv.isPartnerHelp ? ' (🤝 Partner Support)' : ''}`,
-          amount: actualAmount
-        });
+        const partnerEntry = resolvePartnerHelper(adv.partnerPhone, adv.description);
+        const disburserEntry = adv.paidBy ? resolveEntryKey(adv.paidBy, adv.description) : null;
+
+        if (partnerEntry) {
+          partnerEntry.totalDisbursed += partnerHelpAmount;
+          partnerEntry.advancesTotal += partnerHelpAmount;
+          partnerEntry.transactionCount += 1;
+          const curr = partnerEntry.projectAmounts.get(adv.projectId) || 0;
+          partnerEntry.projectAmounts.set(adv.projectId, curr + partnerHelpAmount);
+
+          partnerEntry.transactions.push({
+            id: `${adv.id}_partner`,
+            date: adv.date,
+            category: 'Labour Advance',
+            projectId: adv.projectId,
+            projectName: getProjectName(adv.projectId),
+            description: `${adv.description || 'Labour Micro Advance'} (🤝 Partner Support Provided)`,
+            amount: partnerHelpAmount
+          });
+        }
+
+        if (disburserEntry && disburserEntry !== partnerEntry) {
+          if (primaryAmount > 0) {
+            disburserEntry.totalDisbursed += primaryAmount;
+            disburserEntry.advancesTotal += primaryAmount;
+            disburserEntry.transactionCount += 1;
+            const curr = disburserEntry.projectAmounts.get(adv.projectId) || 0;
+            disburserEntry.projectAmounts.set(adv.projectId, curr + primaryAmount);
+
+            disburserEntry.transactions.push({
+              id: `${adv.id}_primary`,
+              date: adv.date,
+              category: 'Labour Advance',
+              projectId: adv.projectId,
+              projectName: getProjectName(adv.projectId),
+              description: `${adv.description || 'Labour Micro Advance'} (Disbursed; Partner Support: ₹${partnerHelpAmount.toLocaleString()})`,
+              amount: primaryAmount
+            });
+          } else {
+            disburserEntry.transactions.push({
+              id: `${adv.id}_primary_info`,
+              date: adv.date,
+              category: 'Labour Advance',
+              projectId: adv.projectId,
+              projectName: getProjectName(adv.projectId),
+              description: `${adv.description || 'Labour Micro Advance'} (100% Funded by Partner Support)`,
+              amount: totalAmount
+            });
+          }
+        } else if (!partnerEntry && disburserEntry) {
+          disburserEntry.totalDisbursed += totalAmount;
+          disburserEntry.advancesTotal += totalAmount;
+          disburserEntry.transactionCount += 1;
+          const curr = disburserEntry.projectAmounts.get(adv.projectId) || 0;
+          disburserEntry.projectAmounts.set(adv.projectId, curr + totalAmount);
+
+          disburserEntry.transactions.push({
+            id: adv.id,
+            date: adv.date,
+            category: 'Labour Advance',
+            projectId: adv.projectId,
+            projectName: getProjectName(adv.projectId),
+            description: `${adv.description || 'Labour Micro Advance'} (🤝 Partner Support)`,
+            amount: totalAmount
+          });
+        }
+      } else {
+        const entry = resolveEntryKey(adv.paidBy, adv.description);
+        if (entry) {
+          entry.totalDisbursed += totalAmount;
+          entry.advancesTotal += totalAmount;
+          entry.transactionCount += 1;
+          const curr = entry.projectAmounts.get(adv.projectId) || 0;
+          entry.projectAmounts.set(adv.projectId, curr + totalAmount);
+
+          entry.transactions.push({
+            id: adv.id,
+            date: adv.date,
+            category: 'Labour Advance',
+            projectId: adv.projectId,
+            projectName: getProjectName(adv.projectId),
+            description: adv.description || 'Labour Micro Advance',
+            amount: totalAmount
+          });
+        }
       }
     });
 
@@ -325,75 +413,291 @@ export default function PayerManager({
 
     // 3. Daily Operational Expenses
     dailyExpenses.forEach(exp => {
-      const entry = resolveEntryKey(exp.payerId, exp.description, exp.subCategory);
-      if (entry) {
+      const totalAmount = Number(exp.amount) || 0;
+      if (exp.isPartnerHelp) {
         const partnerVal = Number(exp.partnerAmount);
-        const actualAmount = (exp.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(exp.amount) || 0);
-        entry.totalDisbursed += actualAmount;
-        entry.expensesTotal += actualAmount;
-        entry.transactionCount += 1;
-        const curr = entry.projectAmounts.get(exp.projectId) || 0;
-        entry.projectAmounts.set(exp.projectId, curr + actualAmount);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-        entry.transactions.push({
-          id: exp.id,
-          date: exp.date,
-          category: 'Daily Expense',
-          projectId: exp.projectId,
-          projectName: getProjectName(exp.projectId),
-          description: `${exp.description || `Misc Expense (${exp.subCategory})`}${exp.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
-          amount: actualAmount
-        });
+        const partnerEntry = resolvePartnerHelper(exp.partnerPhone, exp.description);
+        const disburserEntry = exp.payerId ? resolveEntryKey(exp.payerId, exp.description, exp.subCategory) : null;
+
+        if (partnerEntry) {
+          partnerEntry.totalDisbursed += partnerHelpAmount;
+          partnerEntry.expensesTotal += partnerHelpAmount;
+          partnerEntry.transactionCount += 1;
+          const curr = partnerEntry.projectAmounts.get(exp.projectId) || 0;
+          partnerEntry.projectAmounts.set(exp.projectId, curr + partnerHelpAmount);
+
+          partnerEntry.transactions.push({
+            id: `${exp.id}_partner`,
+            date: exp.date,
+            category: 'Daily Expense',
+            projectId: exp.projectId,
+            projectName: getProjectName(exp.projectId),
+            description: `${exp.description || `Misc Expense (${exp.subCategory})`} (🤝 Partner Support Provided)`,
+            amount: partnerHelpAmount
+          });
+        }
+
+        if (disburserEntry && disburserEntry !== partnerEntry) {
+          if (primaryAmount > 0) {
+            disburserEntry.totalDisbursed += primaryAmount;
+            disburserEntry.expensesTotal += primaryAmount;
+            disburserEntry.transactionCount += 1;
+            const curr = disburserEntry.projectAmounts.get(exp.projectId) || 0;
+            disburserEntry.projectAmounts.set(exp.projectId, curr + primaryAmount);
+
+            disburserEntry.transactions.push({
+              id: `${exp.id}_primary`,
+              date: exp.date,
+              category: 'Daily Expense',
+              projectId: exp.projectId,
+              projectName: getProjectName(exp.projectId),
+              description: `${exp.description || `Misc Expense (${exp.subCategory})`} (Disbursed; Partner Support: ₹${partnerHelpAmount.toLocaleString()})`,
+              amount: primaryAmount
+            });
+          } else {
+            disburserEntry.transactions.push({
+              id: `${exp.id}_primary_info`,
+              date: exp.date,
+              category: 'Daily Expense',
+              projectId: exp.projectId,
+              projectName: getProjectName(exp.projectId),
+              description: `${exp.description || `Misc Expense (${exp.subCategory})`} (100% Funded by Partner Support)`,
+              amount: totalAmount
+            });
+          }
+        } else if (!partnerEntry && disburserEntry) {
+          disburserEntry.totalDisbursed += totalAmount;
+          disburserEntry.expensesTotal += totalAmount;
+          disburserEntry.transactionCount += 1;
+          const curr = disburserEntry.projectAmounts.get(exp.projectId) || 0;
+          disburserEntry.projectAmounts.set(exp.projectId, curr + totalAmount);
+
+          disburserEntry.transactions.push({
+            id: exp.id,
+            date: exp.date,
+            category: 'Daily Expense',
+            projectId: exp.projectId,
+            projectName: getProjectName(exp.projectId),
+            description: `${exp.description || `Misc Expense (${exp.subCategory})`} (🤝 Partner Support)`,
+            amount: totalAmount
+          });
+        }
+      } else {
+        const entry = resolveEntryKey(exp.payerId, exp.description, exp.subCategory);
+        if (entry) {
+          entry.totalDisbursed += totalAmount;
+          entry.expensesTotal += totalAmount;
+          entry.transactionCount += 1;
+          const curr = entry.projectAmounts.get(exp.projectId) || 0;
+          entry.projectAmounts.set(exp.projectId, curr + totalAmount);
+
+          entry.transactions.push({
+            id: exp.id,
+            date: exp.date,
+            category: 'Daily Expense',
+            projectId: exp.projectId,
+            projectName: getProjectName(exp.projectId),
+            description: exp.description || `Misc Expense (${exp.subCategory})`,
+            amount: totalAmount
+          });
+        }
       }
     });
 
     // 4. Hotel & Mess Food Advances
     hotelAdvances.forEach(ha => {
+      const totalAmount = Number(ha.amount) || 0;
       const paidBy = (ha as any).paidBy;
-      const entry = resolveEntryKey(paidBy, ha.notes, ha.hotelName);
-      if (entry) {
+      if (ha.isPartnerHelp) {
         const partnerVal = Number(ha.partnerAmount);
-        const actualAmount = (ha.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(ha.amount) || 0);
-        entry.totalDisbursed += actualAmount;
-        entry.hotelTotal += actualAmount;
-        entry.transactionCount += 1;
-        const curr = entry.projectAmounts.get(ha.projectId) || 0;
-        entry.projectAmounts.set(ha.projectId, curr + actualAmount);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-        entry.transactions.push({
-          id: ha.id,
-          date: ha.date,
-          category: 'Hotel Food',
-          projectId: ha.projectId,
-          projectName: getProjectName(ha.projectId),
-          description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}${ha.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
-          amount: actualAmount
-        });
+        const partnerEntry = resolvePartnerHelper(ha.partnerPhone, ha.notes, ha.hotelName);
+        const disburserEntry = paidBy ? resolveEntryKey(paidBy, ha.notes, ha.hotelName) : null;
+
+        if (partnerEntry) {
+          partnerEntry.totalDisbursed += partnerHelpAmount;
+          partnerEntry.hotelTotal += partnerHelpAmount;
+          partnerEntry.transactionCount += 1;
+          const curr = partnerEntry.projectAmounts.get(ha.projectId) || 0;
+          partnerEntry.projectAmounts.set(ha.projectId, curr + partnerHelpAmount);
+
+          partnerEntry.transactions.push({
+            id: `${ha.id}_partner`,
+            date: ha.date,
+            category: 'Hotel Food',
+            projectId: ha.projectId,
+            projectName: getProjectName(ha.projectId),
+            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''} (🤝 Partner Support Provided)`,
+            amount: partnerHelpAmount
+          });
+        }
+
+        if (disburserEntry && disburserEntry !== partnerEntry) {
+          if (primaryAmount > 0) {
+            disburserEntry.totalDisbursed += primaryAmount;
+            disburserEntry.hotelTotal += primaryAmount;
+            disburserEntry.transactionCount += 1;
+            const curr = disburserEntry.projectAmounts.get(ha.projectId) || 0;
+            disburserEntry.projectAmounts.set(ha.projectId, curr + primaryAmount);
+
+            disburserEntry.transactions.push({
+              id: `${ha.id}_primary`,
+              date: ha.date,
+              category: 'Hotel Food',
+              projectId: ha.projectId,
+              projectName: getProjectName(ha.projectId),
+              description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''} (Disbursed; Partner Support: ₹${partnerHelpAmount.toLocaleString()})`,
+              amount: primaryAmount
+            });
+          } else {
+            disburserEntry.transactions.push({
+              id: `${ha.id}_primary_info`,
+              date: ha.date,
+              category: 'Hotel Food',
+              projectId: ha.projectId,
+              projectName: getProjectName(ha.projectId),
+              description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''} (100% Funded by Partner Support)`,
+              amount: totalAmount
+            });
+          }
+        } else if (!partnerEntry && disburserEntry) {
+          disburserEntry.totalDisbursed += totalAmount;
+          disburserEntry.hotelTotal += totalAmount;
+          disburserEntry.transactionCount += 1;
+          const curr = disburserEntry.projectAmounts.get(ha.projectId) || 0;
+          disburserEntry.projectAmounts.set(ha.projectId, curr + totalAmount);
+
+          disburserEntry.transactions.push({
+            id: ha.id,
+            date: ha.date,
+            category: 'Hotel Food',
+            projectId: ha.projectId,
+            projectName: getProjectName(ha.projectId),
+            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''} (🤝 Partner Support)`,
+            amount: totalAmount
+          });
+        }
+      } else {
+        const entry = resolveEntryKey(paidBy, ha.notes, ha.hotelName);
+        if (entry) {
+          entry.totalDisbursed += totalAmount;
+          entry.hotelTotal += totalAmount;
+          entry.transactionCount += 1;
+          const curr = entry.projectAmounts.get(ha.projectId) || 0;
+          entry.projectAmounts.set(ha.projectId, curr + totalAmount);
+
+          entry.transactions.push({
+            id: ha.id,
+            date: ha.date,
+            category: 'Hotel Food',
+            projectId: ha.projectId,
+            projectName: getProjectName(ha.projectId),
+            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}`,
+            amount: totalAmount
+          });
+        }
       }
     });
 
     // 5. Material Stock Procurement
     materials.forEach(m => {
+      const totalAmount = Number(m.cost) || 0;
       const paidBy = (m as any).paidBy;
-      const entry = resolveEntryKey(paidBy, m.name, m.supplier);
-      if (entry) {
+      if (m.isPartnerHelp) {
         const partnerVal = Number(m.partnerAmount);
-        const actualAmount = (m.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(m.cost) || 0);
-        entry.totalDisbursed += actualAmount;
-        entry.materialsTotal += actualAmount;
-        entry.transactionCount += 1;
-        const curr = entry.projectAmounts.get(m.projectId) || 0;
-        entry.projectAmounts.set(m.projectId, curr + actualAmount);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-        entry.transactions.push({
-          id: m.id,
-          date: m.dateBought,
-          category: 'Material Stock',
-          projectId: m.projectId,
-          projectName: getProjectName(m.projectId),
-          description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}${m.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
-          amount: actualAmount
-        });
+        const partnerEntry = resolvePartnerHelper(m.partnerPhone, m.name, m.supplier);
+        const disburserEntry = paidBy ? resolveEntryKey(paidBy, m.name, m.supplier) : null;
+
+        if (partnerEntry) {
+          partnerEntry.totalDisbursed += partnerHelpAmount;
+          partnerEntry.materialsTotal += partnerHelpAmount;
+          partnerEntry.transactionCount += 1;
+          const curr = partnerEntry.projectAmounts.get(m.projectId) || 0;
+          partnerEntry.projectAmounts.set(m.projectId, curr + partnerHelpAmount);
+
+          partnerEntry.transactions.push({
+            id: `${m.id}_partner`,
+            date: m.dateBought,
+            category: 'Material Stock',
+            projectId: m.projectId,
+            projectName: getProjectName(m.projectId),
+            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'} (🤝 Partner Support Provided)`,
+            amount: partnerHelpAmount
+          });
+        }
+
+        if (disburserEntry && disburserEntry !== partnerEntry) {
+          if (primaryAmount > 0) {
+            disburserEntry.totalDisbursed += primaryAmount;
+            disburserEntry.materialsTotal += primaryAmount;
+            disburserEntry.transactionCount += 1;
+            const curr = disburserEntry.projectAmounts.get(m.projectId) || 0;
+            disburserEntry.projectAmounts.set(m.projectId, curr + primaryAmount);
+
+            disburserEntry.transactions.push({
+              id: `${m.id}_primary`,
+              date: m.dateBought,
+              category: 'Material Stock',
+              projectId: m.projectId,
+              projectName: getProjectName(m.projectId),
+              description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'} (Disbursed; Partner Support: ₹${partnerHelpAmount.toLocaleString()})`,
+              amount: primaryAmount
+            });
+          } else {
+            disburserEntry.transactions.push({
+              id: `${m.id}_primary_info`,
+              date: m.dateBought,
+              category: 'Material Stock',
+              projectId: m.projectId,
+              projectName: getProjectName(m.projectId),
+              description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'} (100% Funded by Partner Support)`,
+              amount: totalAmount
+            });
+          }
+        } else if (!partnerEntry && disburserEntry) {
+          disburserEntry.totalDisbursed += totalAmount;
+          disburserEntry.materialsTotal += totalAmount;
+          disburserEntry.transactionCount += 1;
+          const curr = disburserEntry.projectAmounts.get(m.projectId) || 0;
+          disburserEntry.projectAmounts.set(m.projectId, curr + totalAmount);
+
+          disburserEntry.transactions.push({
+            id: m.id,
+            date: m.dateBought,
+            category: 'Material Stock',
+            projectId: m.projectId,
+            projectName: getProjectName(m.projectId),
+            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'} (🤝 Partner Support)`,
+            amount: totalAmount
+          });
+        }
+      } else {
+        const entry = resolveEntryKey(paidBy, m.name, m.supplier);
+        if (entry) {
+          entry.totalDisbursed += totalAmount;
+          entry.materialsTotal += totalAmount;
+          entry.transactionCount += 1;
+          const curr = entry.projectAmounts.get(m.projectId) || 0;
+          entry.projectAmounts.set(m.projectId, curr + totalAmount);
+
+          entry.transactions.push({
+            id: m.id,
+            date: m.dateBought,
+            category: 'Material Stock',
+            projectId: m.projectId,
+            projectName: getProjectName(m.projectId),
+            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}`,
+            amount: totalAmount
+          });
+        }
       }
     });
 

@@ -483,6 +483,21 @@ export default function Dashboard({
       return null;
     };
 
+    const resolvePartnerHelperPayer = (partnerRef?: string, description?: string, notes?: string) => {
+      const rawRef = (partnerRef || '').trim();
+      if (rawRef) {
+        const p = resolvePayerKey(rawRef);
+        if (p) return p;
+      }
+      const fullText = `${description || ''} ${notes || ''}`;
+      const match = fullText.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
+      if (match && match[1]) {
+        const p = resolvePayerKey(match[1].trim());
+        if (p) return p;
+      }
+      return null;
+    };
+
     // Registered Payers
     (payers || []).forEach(p => {
       getOrCreatePayer(p.id, p.name, p.phone);
@@ -490,16 +505,49 @@ export default function Dashboard({
 
     // Advances
     (advanceRecords || []).forEach(adv => {
-      const p = resolvePayerKey(adv.paidBy, adv.description, undefined, adv.partnerPhone);
-      if (p) {
+      const totalAmount = Number(adv.amount) || 0;
+      if (adv.isPartnerHelp) {
         const partnerVal = Number(adv.partnerAmount);
-        const advContrib = (adv.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(adv.amount) || 0);
-        p.totalInvested += advContrib;
-        p.advancesTotal += advContrib;
-        if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
-        p.transactionCount += 1;
-        const curr = p.projectAmounts.get(adv.projectId) || 0;
-        p.projectAmounts.set(adv.projectId, curr + advContrib);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
+
+        const partnerPayer = resolvePartnerHelperPayer(adv.partnerPhone, adv.description);
+        const disburserPayer = adv.paidBy ? resolvePayerKey(adv.paidBy, adv.description) : null;
+
+        if (partnerPayer) {
+          partnerPayer.totalInvested += partnerHelpAmount;
+          partnerPayer.advancesTotal += partnerHelpAmount;
+          partnerPayer.partnerHelpTotal += partnerHelpAmount;
+          partnerPayer.transactionCount += 1;
+          const curr = partnerPayer.projectAmounts.get(adv.projectId) || 0;
+          partnerPayer.projectAmounts.set(adv.projectId, curr + partnerHelpAmount);
+        }
+
+        if (disburserPayer && disburserPayer !== partnerPayer) {
+          if (primaryAmount > 0) {
+            disburserPayer.totalInvested += primaryAmount;
+            disburserPayer.advancesTotal += primaryAmount;
+            disburserPayer.transactionCount += 1;
+            const curr = disburserPayer.projectAmounts.get(adv.projectId) || 0;
+            disburserPayer.projectAmounts.set(adv.projectId, curr + primaryAmount);
+          }
+        } else if (!partnerPayer && disburserPayer) {
+          disburserPayer.totalInvested += totalAmount;
+          disburserPayer.advancesTotal += totalAmount;
+          disburserPayer.partnerHelpTotal += partnerHelpAmount;
+          disburserPayer.transactionCount += 1;
+          const curr = disburserPayer.projectAmounts.get(adv.projectId) || 0;
+          disburserPayer.projectAmounts.set(adv.projectId, curr + totalAmount);
+        }
+      } else {
+        const p = resolvePayerKey(adv.paidBy, adv.description, undefined, adv.partnerPhone);
+        if (p) {
+          p.totalInvested += totalAmount;
+          p.advancesTotal += totalAmount;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(adv.projectId) || 0;
+          p.projectAmounts.set(adv.projectId, curr + totalAmount);
+        }
       }
     });
 
@@ -519,48 +567,147 @@ export default function Dashboard({
 
     // Daily Expenses
     (dailyExpenses || []).forEach(exp => {
-      const p = resolvePayerKey(exp.payerId, exp.description, exp.subCategory, exp.partnerPhone);
-      if (p) {
+      const totalAmount = Number(exp.amount) || 0;
+      if (exp.isPartnerHelp) {
         const partnerVal = Number(exp.partnerAmount);
-        const expContrib = (exp.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(exp.amount) || 0);
-        p.totalInvested += expContrib;
-        p.expensesTotal += expContrib;
-        if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
-        p.transactionCount += 1;
-        const curr = p.projectAmounts.get(exp.projectId) || 0;
-        p.projectAmounts.set(exp.projectId, curr + expContrib);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
+
+        const partnerPayer = resolvePartnerHelperPayer(exp.partnerPhone, exp.description);
+        const disburserPayer = exp.payerId ? resolvePayerKey(exp.payerId, exp.description, exp.subCategory) : null;
+
+        if (partnerPayer) {
+          partnerPayer.totalInvested += partnerHelpAmount;
+          partnerPayer.expensesTotal += partnerHelpAmount;
+          partnerPayer.partnerHelpTotal += partnerHelpAmount;
+          partnerPayer.transactionCount += 1;
+          const curr = partnerPayer.projectAmounts.get(exp.projectId) || 0;
+          partnerPayer.projectAmounts.set(exp.projectId, curr + partnerHelpAmount);
+        }
+
+        if (disburserPayer && disburserPayer !== partnerPayer) {
+          if (primaryAmount > 0) {
+            disburserPayer.totalInvested += primaryAmount;
+            disburserPayer.expensesTotal += primaryAmount;
+            disburserPayer.transactionCount += 1;
+            const curr = disburserPayer.projectAmounts.get(exp.projectId) || 0;
+            disburserPayer.projectAmounts.set(exp.projectId, curr + primaryAmount);
+          }
+        } else if (!partnerPayer && disburserPayer) {
+          disburserPayer.totalInvested += totalAmount;
+          disburserPayer.expensesTotal += totalAmount;
+          disburserPayer.partnerHelpTotal += partnerHelpAmount;
+          disburserPayer.transactionCount += 1;
+          const curr = disburserPayer.projectAmounts.get(exp.projectId) || 0;
+          disburserPayer.projectAmounts.set(exp.projectId, curr + totalAmount);
+        }
+      } else {
+        const p = resolvePayerKey(exp.payerId, exp.description, exp.subCategory, exp.partnerPhone);
+        if (p) {
+          p.totalInvested += totalAmount;
+          p.expensesTotal += totalAmount;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(exp.projectId) || 0;
+          p.projectAmounts.set(exp.projectId, curr + totalAmount);
+        }
       }
     });
 
     // Hotel Advances
     (hotelAdvances || []).forEach(ha => {
+      const totalAmount = Number(ha.amount) || 0;
       const paidBy = (ha as any).paidBy;
-      const p = resolvePayerKey(paidBy, ha.notes, ha.hotelName, ha.partnerPhone);
-      if (p) {
+      if (ha.isPartnerHelp) {
         const partnerVal = Number(ha.partnerAmount);
-        const haContrib = (ha.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(ha.amount) || 0);
-        p.totalInvested += haContrib;
-        p.hotelTotal += haContrib;
-        if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
-        p.transactionCount += 1;
-        const curr = p.projectAmounts.get(ha.projectId) || 0;
-        p.projectAmounts.set(ha.projectId, curr + haContrib);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
+
+        const partnerPayer = resolvePartnerHelperPayer(ha.partnerPhone, ha.notes, ha.hotelName);
+        const disburserPayer = paidBy ? resolvePayerKey(paidBy, ha.notes, ha.hotelName) : null;
+
+        if (partnerPayer) {
+          partnerPayer.totalInvested += partnerHelpAmount;
+          partnerPayer.hotelTotal += partnerHelpAmount;
+          partnerPayer.partnerHelpTotal += partnerHelpAmount;
+          partnerPayer.transactionCount += 1;
+          const curr = partnerPayer.projectAmounts.get(ha.projectId) || 0;
+          partnerPayer.projectAmounts.set(ha.projectId, curr + partnerHelpAmount);
+        }
+
+        if (disburserPayer && disburserPayer !== partnerPayer) {
+          if (primaryAmount > 0) {
+            disburserPayer.totalInvested += primaryAmount;
+            disburserPayer.hotelTotal += primaryAmount;
+            disburserPayer.transactionCount += 1;
+            const curr = disburserPayer.projectAmounts.get(ha.projectId) || 0;
+            disburserPayer.projectAmounts.set(ha.projectId, curr + primaryAmount);
+          }
+        } else if (!partnerPayer && disburserPayer) {
+          disburserPayer.totalInvested += totalAmount;
+          disburserPayer.hotelTotal += totalAmount;
+          disburserPayer.partnerHelpTotal += partnerHelpAmount;
+          disburserPayer.transactionCount += 1;
+          const curr = disburserPayer.projectAmounts.get(ha.projectId) || 0;
+          disburserPayer.projectAmounts.set(ha.projectId, curr + totalAmount);
+        }
+      } else {
+        const p = resolvePayerKey(paidBy, ha.notes, ha.hotelName, ha.partnerPhone);
+        if (p) {
+          p.totalInvested += totalAmount;
+          p.hotelTotal += totalAmount;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(ha.projectId) || 0;
+          p.projectAmounts.set(ha.projectId, curr + totalAmount);
+        }
       }
     });
 
     // Materials
     (materials || []).forEach(m => {
+      const totalAmount = Number(m.cost) || 0;
       const paidBy = (m as any).paidBy;
-      const p = resolvePayerKey(paidBy, m.name, m.supplier, m.partnerPhone);
-      if (p) {
+      if (m.isPartnerHelp) {
         const partnerVal = Number(m.partnerAmount);
-        const mContrib = (m.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(m.cost) || 0);
-        p.totalInvested += mContrib;
-        p.materialsTotal += mContrib;
-        if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
-        p.transactionCount += 1;
-        const curr = p.projectAmounts.get(m.projectId) || 0;
-        p.projectAmounts.set(m.projectId, curr + mContrib);
+        const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
+        const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
+
+        const partnerPayer = resolvePartnerHelperPayer(m.partnerPhone, m.name, m.supplier);
+        const disburserPayer = paidBy ? resolvePayerKey(paidBy, m.name, m.supplier) : null;
+
+        if (partnerPayer) {
+          partnerPayer.totalInvested += partnerHelpAmount;
+          partnerPayer.materialsTotal += partnerHelpAmount;
+          partnerPayer.partnerHelpTotal += partnerHelpAmount;
+          partnerPayer.transactionCount += 1;
+          const curr = partnerPayer.projectAmounts.get(m.projectId) || 0;
+          partnerPayer.projectAmounts.set(m.projectId, curr + partnerHelpAmount);
+        }
+
+        if (disburserPayer && disburserPayer !== partnerPayer) {
+          if (primaryAmount > 0) {
+            disburserPayer.totalInvested += primaryAmount;
+            disburserPayer.materialsTotal += primaryAmount;
+            disburserPayer.transactionCount += 1;
+            const curr = disburserPayer.projectAmounts.get(m.projectId) || 0;
+            disburserPayer.projectAmounts.set(m.projectId, curr + primaryAmount);
+          }
+        } else if (!partnerPayer && disburserPayer) {
+          disburserPayer.totalInvested += totalAmount;
+          disburserPayer.materialsTotal += totalAmount;
+          disburserPayer.partnerHelpTotal += partnerHelpAmount;
+          disburserPayer.transactionCount += 1;
+          const curr = disburserPayer.projectAmounts.get(m.projectId) || 0;
+          disburserPayer.projectAmounts.set(m.projectId, curr + totalAmount);
+        }
+      } else {
+        const p = resolvePayerKey(paidBy, m.name, m.supplier, m.partnerPhone);
+        if (p) {
+          p.totalInvested += totalAmount;
+          p.materialsTotal += totalAmount;
+          p.transactionCount += 1;
+          const curr = p.projectAmounts.get(m.projectId) || 0;
+          p.projectAmounts.set(m.projectId, curr + totalAmount);
+        }
       }
     });
 
