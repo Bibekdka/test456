@@ -68,6 +68,7 @@ export default function AttendanceTracker({
   const [advDesc, setAdvDesc] = useState('');
   const [advPaidBy, setAdvPaidBy] = useState('');
   const [advIsPartnerHelp, setAdvIsPartnerHelp] = useState(false);
+  const [advPartnerMember, setAdvPartnerMember] = useState('');
   const [advPartnerAmount, setAdvPartnerAmount] = useState('');
   const [advPartnerPhone, setAdvPartnerPhone] = useState('');
 
@@ -334,17 +335,30 @@ export default function AttendanceTracker({
       ? (advPartnerAmount.trim() ? Number(advPartnerAmount) || parsedAdvAmount : parsedAdvAmount)
       : undefined;
 
+    let finalAdvDesc = advDesc.trim() || 'Advance payment';
+    let finalPartnerPhone = advPartnerPhone.trim();
+
+    if (advIsPartnerHelp && advPartnerMember.trim()) {
+      const pName = advPartnerMember.trim();
+      if (!finalAdvDesc.toLowerCase().includes(pName.toLowerCase())) {
+        finalAdvDesc = `${finalAdvDesc} (🤝 Partner Support: ${pName})`;
+      }
+      if (!finalPartnerPhone) {
+        finalPartnerPhone = pName;
+      }
+    }
+
     onAddAdvance({
       id: generateId('adv'),
       labourId: advLabourId,
       projectId: activeProject.id,
       amount: parsedAdvAmount,
       date: advDate,
-      description: advDesc || 'Advance payment',
+      description: finalAdvDesc,
       paidBy: advPaidBy || '',
       isPartnerHelp: advIsPartnerHelp,
       partnerAmount: parsedPartnerAmount,
-      partnerPhone: advPartnerPhone.trim() || undefined,
+      partnerPhone: finalPartnerPhone || undefined,
     });
 
     setAdvLabourId('');
@@ -352,6 +366,7 @@ export default function AttendanceTracker({
     setAdvDesc('');
     setAdvPaidBy('');
     setAdvIsPartnerHelp(false);
+    setAdvPartnerMember('');
     setAdvPartnerAmount('');
     setAdvPartnerPhone('');
     setShowAdvanceForm(false);
@@ -1208,10 +1223,10 @@ export default function AttendanceTracker({
                           Select Member / Partner Who Gave Financial Help *
                         </label>
                         <select
-                          value={advPaidBy}
+                          value={advPartnerMember}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setAdvPaidBy(val);
+                            setAdvPartnerMember(val);
                             const pObj = payers.find(p => p.id === val || p.name === val);
                             const lObj = labours.find(l => l.id === val || l.name === val);
                             if (pObj?.phone) setAdvPartnerPhone(pObj.phone);
@@ -1254,11 +1269,11 @@ export default function AttendanceTracker({
                                 type="button"
                                 onClick={() => {
                                   setAdvIsPartnerHelp(true);
-                                  setAdvPaidBy(l.name);
+                                  setAdvPartnerMember(l.name);
                                   if (l.contact || l.phone) setAdvPartnerPhone(l.contact || l.phone || '');
                                 }}
                                 className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${
-                                  advPaidBy === l.name
+                                  advPartnerMember === l.name
                                     ? 'bg-amber-600 text-white border-amber-700'
                                     : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-100'
                                 }`}

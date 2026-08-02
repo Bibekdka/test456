@@ -56,6 +56,32 @@ export default function ReportGenerator({
   onExportBackup,
   foodCalculationStartDate = '',
 }: ReportGeneratorProps) {
+  const isPayerMatch = (explicitRef?: string, notes?: string, payer?: Payer) => {
+    if (!payer) return false;
+    const pId = payer.id.toLowerCase();
+    const pName = payer.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+    const pFirstName = pName.split(' ')[0];
+
+    const ref = (explicitRef || '').trim().toLowerCase();
+    const refClean = ref.replace(/\s*\([^)]*\)/g, '').trim();
+    const refFirstName = refClean.split(' ')[0];
+
+    if (ref) {
+      if (ref === pId || refClean === pName) return true;
+      if (refClean.length >= 3 && pName.includes(refClean)) return true;
+      if (pName.length >= 3 && refClean.includes(pName)) return true;
+      if (refFirstName.length >= 3 && refFirstName === pFirstName) return true;
+    }
+
+    if (notes) {
+      const fullText = notes.toLowerCase();
+      if (pName && pName.length >= 3 && fullText.includes(pName)) return true;
+      if (pFirstName && pFirstName.length >= 3 && fullText.includes(pFirstName)) return true;
+    }
+
+    return false;
+  };
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; title: string; date: string; category: string; desc: string; amount: string; name: string } | null>(null);
   const [snapsSearch, setSnapsSearch] = useState('');
@@ -580,24 +606,43 @@ export default function ReportGenerator({
 
       const payerRows = payers.map(p => {
         const advTotal = advanceRecords
-          .filter(a => a.projectId === activeProject.id && a.paidBy === p.id)
-          .reduce((sum, a) => sum + a.amount, 0);
+          .filter(a => a.projectId === activeProject.id && isPayerMatch(a.paidBy, a.description, p))
+          .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+        const payTotal = paymentRecords
+          .filter(pay => pay.projectId === activeProject.id && isPayerMatch(pay.paidBy, pay.notes, p))
+          .reduce((sum, pay) => sum + (Number(pay.amountPaid) || 0), 0);
         const expTotal = dailyExpenses
-          .filter(e => e.projectId === activeProject.id && e.payerId === p.id)
-          .reduce((sum, e) => sum + e.amount, 0);
+          .filter(e => e.projectId === activeProject.id && isPayerMatch(e.payerId, e.description, p))
+          .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        const hotelTotal = hotelAdvances
+          .filter(h => h.projectId === activeProject.id && isPayerMatch(h.paidBy, `${h.notes || ''} ${h.hotelName}`, p))
+          .reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+        const matTotal = materials
+          .filter(m => m.projectId === activeProject.id && isPayerMatch(m.paidBy, `${m.name || ''} ${m.supplier || ''}`, p))
+          .reduce((sum, m) => sum + (Number(m.cost) || 0), 0);
+        const gstTotal = gstRecords
+          .filter(g => g.projectId === activeProject.id && g.type === 'paid' && isPayerMatch(g.paidBy, `${g.notes || ''} ${g.partyName || ''}`, p))
+          .reduce((sum, g) => sum + (Number(g.amount) || 0), 0);
+        const pettyTotal = (pettyCashEntries || [])
+          .filter(pc => pc.projectId === activeProject.id && pc.type === 'top_up' && isPayerMatch(pc.payerId, pc.description, p))
+          .reduce((sum, pc) => sum + (Number(pc.amount) || 0), 0);
+
+        const grandTotal = advTotal + payTotal + expTotal + hotelTotal + matTotal + gstTotal + pettyTotal;
 
         return [
           p.name,
-          p.role || 'Officer / Manager',
+          p.role || 'Officer / Partner',
           p.phone || 'N/A',
           `Rs. ${advTotal.toLocaleString()}`,
+          `Rs. ${payTotal.toLocaleString()}`,
           `Rs. ${expTotal.toLocaleString()}`,
-          `Rs. ${(advTotal + expTotal).toLocaleString()}`
+          `Rs. ${(hotelTotal + matTotal + gstTotal + pettyTotal).toLocaleString()}`,
+          `Rs. ${grandTotal.toLocaleString()}`
         ];
       });
 
       autoTable(doc, {
-        head: [['Payer / Cashier Name', 'Designation Role', 'Contact Phone', 'Labour Advances Paid', 'Daily Expenses Paid', 'Total Funds Distributed']],
+        head: [['Payer / Partner Name', 'Designation Role', 'Contact Phone', 'Advances', 'Wage Payouts', 'Expenses', 'Hotel/Mat/GST/Petty', 'Total Disbursed']],
         body: payerRows,
         startY: payerNextY + 4,
         theme: 'striped',
@@ -937,18 +982,41 @@ export default function ReportGenerator({
     if (payers.length > 0) {
       const payerExcelRows = payers.map(p => {
         const advTotal = advanceRecords
-          .filter(a => a.projectId === activeProject.id && a.paidBy === p.id)
-          .reduce((sum, a) => sum + a.amount, 0);
+          .filter(a => a.projectId === activeProject.id && isPayerMatch(a.paidBy, a.description, p))
+          .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+        const payTotal = paymentRecords
+          .filter(pay => pay.projectId === activeProject.id && isPayerMatch(pay.paidBy, pay.notes, p))
+          .reduce((sum, pay) => sum + (Number(pay.amountPaid) || 0), 0);
         const expTotal = dailyExpenses
-          .filter(e => e.projectId === activeProject.id && e.payerId === p.id)
-          .reduce((sum, e) => sum + e.amount, 0);
+          .filter(e => e.projectId === activeProject.id && isPayerMatch(e.payerId, e.description, p))
+          .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+        const hotelTotal = hotelAdvances
+          .filter(h => h.projectId === activeProject.id && isPayerMatch(h.paidBy, `${h.notes || ''} ${h.hotelName}`, p))
+          .reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+        const matTotal = materials
+          .filter(m => m.projectId === activeProject.id && isPayerMatch(m.paidBy, `${m.name || ''} ${m.supplier || ''}`, p))
+          .reduce((sum, m) => sum + (Number(m.cost) || 0), 0);
+        const gstTotal = gstRecords
+          .filter(g => g.projectId === activeProject.id && g.type === 'paid' && isPayerMatch(g.paidBy, `${g.notes || ''} ${g.partyName || ''}`, p))
+          .reduce((sum, g) => sum + (Number(g.amount) || 0), 0);
+        const pettyTotal = (pettyCashEntries || [])
+          .filter(pc => pc.projectId === activeProject.id && pc.type === 'top_up' && isPayerMatch(pc.payerId, pc.description, p))
+          .reduce((sum, pc) => sum + (Number(pc.amount) || 0), 0);
+
+        const grandTotal = advTotal + payTotal + expTotal + hotelTotal + matTotal + gstTotal + pettyTotal;
+
         return {
-          "Officer / Cashier Name": p.name,
+          "Officer / Partner Name": p.name,
           "Role / Designation": p.role || "Officer",
           "Contact Phone": p.phone || "N/A",
-          "Labour Advances Paid (Rs.)": advTotal,
-          "Daily Expenses Disbursed (Rs.)": expTotal,
-          "Total Disbursed Funds (Rs.)": advTotal + expTotal
+          "Labour Advances (Rs.)": advTotal,
+          "Wage Payouts (Rs.)": payTotal,
+          "Daily Expenses (Rs.)": expTotal,
+          "Hotel & Mess Advances (Rs.)": hotelTotal,
+          "Material Purchases (Rs.)": matTotal,
+          "GST Taxes Paid (Rs.)": gstTotal,
+          "Petty Cash Top-Ups (Rs.)": pettyTotal,
+          "Total Disbursed Funds (Rs.)": grandTotal
         };
       });
       const wsPayers = XLSX.utils.json_to_sheet(payerExcelRows);

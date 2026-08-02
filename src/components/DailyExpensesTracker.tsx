@@ -75,6 +75,7 @@ export default function DailyExpensesTracker({
   const [selectedLabourId, setSelectedLabourId] = useState('');
   const [selectedPayerId, setSelectedPayerId] = useState('');
   const [isPartnerHelp, setIsPartnerHelp] = useState(false);
+  const [partnerMember, setPartnerMember] = useState('');
   const [partnerAmount, setPartnerAmount] = useState('');
   const [partnerPhone, setPartnerPhone] = useState('');
   const [receiptImage, setReceiptImage] = useState<string | undefined>(undefined);
@@ -193,8 +194,15 @@ export default function DailyExpensesTracker({
     setSelectedPayerId(exp.payerId || '');
     setIsPartnerHelp(!!exp.isPartnerHelp);
     setPartnerAmount(exp.partnerAmount !== undefined ? exp.partnerAmount.toString() : '');
-    const existingPayer = payers.find(p => p.id === exp.payerId || p.name === exp.payerId);
-    setPartnerPhone(exp.partnerPhone || existingPayer?.phone || '');
+    setPartnerPhone(exp.partnerPhone || '');
+
+    const partnerMatch = exp.description.match(/\(🤝 Partner Support:\s*([^)]+)\)/i);
+    if (partnerMatch && partnerMatch[1]) {
+      setPartnerMember(partnerMatch[1].trim());
+    } else {
+      setPartnerMember(exp.partnerPhone || '');
+    }
+
     setReceiptImage(exp.receiptImage);
     setReceiptImageName(exp.receiptImageName);
     setShowForm(true);
@@ -212,6 +220,7 @@ export default function DailyExpensesTracker({
     setSelectedLabourId('');
     setSelectedPayerId('');
     setIsPartnerHelp(false);
+    setPartnerMember('');
     setPartnerAmount('');
     setPartnerPhone('');
     clearReceipt();
@@ -232,12 +241,25 @@ export default function DailyExpensesTracker({
       return;
     }
 
-    // Sync phone number to Payer if selected
-    if (selectedPayerId && partnerPhone.trim()) {
-      const payerObj = payers.find(p => p.id === selectedPayerId || p.name === selectedPayerId);
-      if (payerObj && (!payerObj.phone || payerObj.phone !== partnerPhone.trim())) {
+    let finalDescription = description.trim();
+    let finalPartnerPhone = partnerPhone.trim();
+
+    if (isPartnerHelp && partnerMember.trim()) {
+      const pName = partnerMember.trim();
+      if (!finalDescription.toLowerCase().includes(pName.toLowerCase())) {
+        finalDescription = `${finalDescription} (🤝 Partner Support: ${pName})`;
+      }
+      if (!finalPartnerPhone) {
+        finalPartnerPhone = pName;
+      }
+    }
+
+    // Sync phone number to partner if selected and matches a payer profile
+    if (isPartnerHelp && partnerMember.trim() && partnerPhone.trim()) {
+      const partnerPayerObj = payers.find(p => p.id === partnerMember || p.name === partnerMember);
+      if (partnerPayerObj && (!partnerPayerObj.phone || partnerPayerObj.phone !== partnerPhone.trim())) {
         onUpdatePayer?.({
-          ...payerObj,
+          ...partnerPayerObj,
           phone: partnerPhone.trim()
         });
       }
@@ -254,12 +276,12 @@ export default function DailyExpensesTracker({
       category,
       subCategory,
       amount: parsedAmount,
-      description: description.trim(),
+      description: finalDescription,
       labourId: category === 'labour_expense' && selectedLabourId ? selectedLabourId : undefined,
       payerId: selectedPayerId || undefined,
       isPartnerHelp,
       partnerAmount: parsedPartnerAmount,
-      partnerPhone: partnerPhone.trim() || undefined,
+      partnerPhone: finalPartnerPhone || undefined,
       receiptImage,
       receiptImageName
     };
@@ -624,10 +646,10 @@ export default function DailyExpensesTracker({
                           Select Supporting Partner / Member Present in Project (Basanta, BDK, Singra, Deben, etc.) *
                         </label>
                         <select
-                          value={selectedPayerId}
+                          value={partnerMember}
                           onChange={(e) => {
                             const val = e.target.value;
-                            setSelectedPayerId(val);
+                            setPartnerMember(val);
                             const foundPayer = payers.find(p => p.id === val || p.name === val);
                             const foundLabour = labours.find(l => l.id === val || l.name === val);
                             if (foundPayer?.phone) {
@@ -651,7 +673,7 @@ export default function DailyExpensesTracker({
                           {payers && payers.length > 0 && (
                             <optgroup label="🏢 Registered Financial Payers & Partners">
                               {payers.map((p) => (
-                                <option key={`phelp_payer_${p.id}`} value={p.id}>
+                                <option key={`phelp_payer_${p.id}`} value={p.name}>
                                   {p.name} {p.role ? `• ${p.role}` : ''} {p.phone ? `(📞 ${p.phone})` : ''}
                                 </option>
                               ))}
@@ -673,11 +695,11 @@ export default function DailyExpensesTracker({
                                 type="button"
                                 onClick={() => {
                                   setIsPartnerHelp(true);
-                                  setSelectedPayerId(l.name);
+                                  setPartnerMember(l.name);
                                   if (l.contact || l.phone) setPartnerPhone(l.contact || l.phone || '');
                                 }}
                                 className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border transition cursor-pointer flex items-center gap-1 ${
-                                  selectedPayerId === l.name || selectedPayerId === l.id
+                                  partnerMember === l.name || partnerMember === l.id
                                     ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
                                     : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-amber-200 dark:border-amber-800 hover:bg-amber-100 dark:hover:bg-amber-900/40'
                                 }`}

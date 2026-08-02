@@ -149,18 +149,31 @@ export default function PayerManager({
 
       const cleanedRef = rawRef.replace(/\s*\([^)]*\)/g, '').trim();
       const targetLower = cleanedRef.toLowerCase();
+      const targetFirstName = targetLower.split(' ')[0];
 
       // Find registered payer profile or labour member
       const registered = payers.find(p => {
         const pIdLower = p.id.toLowerCase();
         const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        return p.id === rawRef || pIdLower === targetLower || pNameClean === targetLower;
+        const pFirstName = pNameClean.split(' ')[0];
+        return p.id === rawRef || 
+               pIdLower === targetLower || 
+               pNameClean === targetLower ||
+               (targetLower.length >= 3 && pNameClean.includes(targetLower)) ||
+               (pNameClean.length >= 3 && targetLower.includes(pNameClean)) ||
+               (targetFirstName.length >= 3 && pFirstName === targetFirstName);
       });
 
       const labourMember = !registered ? (labours || []).find(l => {
         const lIdLower = l.id.toLowerCase();
         const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        return l.id === rawRef || lIdLower === targetLower || lNameClean === targetLower;
+        const lFirstName = lNameClean.split(' ')[0];
+        return l.id === rawRef || 
+               lIdLower === targetLower || 
+               lNameClean === targetLower ||
+               (targetLower.length >= 3 && lNameClean.includes(targetLower)) ||
+               (lNameClean.length >= 3 && targetLower.includes(lNameClean)) ||
+               (targetFirstName.length >= 3 && lFirstName === targetFirstName);
       }) : undefined;
 
       const canonicalId = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
@@ -168,10 +181,23 @@ export default function PayerManager({
       const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
 
       let resolvedKey = canonicalId;
+      const targetPhone = (registered?.phone || labourMember?.contact || labourMember?.phone || '').trim().replace(/\D/g, '');
+
       if (!map.has(canonicalId)) {
         for (const [k, v] of map.entries()) {
           const vNameClean = v.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-          if (vNameClean === targetLowerName || (targetLowerName.length > 3 && vNameClean.includes(targetLowerName)) || (vNameClean.length > 3 && targetLowerName.includes(vNameClean))) {
+          const vPhoneClean = (v.phone || '').trim().replace(/\D/g, '');
+          const vFirstName = vNameClean.split(' ')[0];
+          const tFirstName = targetLowerName.split(' ')[0];
+
+          const nameMatch = vNameClean === targetLowerName || 
+            (targetLowerName.length >= 3 && vNameClean.includes(targetLowerName)) || 
+            (vNameClean.length >= 3 && targetLowerName.includes(vNameClean)) ||
+            (tFirstName.length >= 3 && vFirstName === tFirstName);
+
+          const phoneMatch = Boolean(targetPhone && vPhoneClean && targetPhone.length >= 8 && targetPhone === vPhoneClean);
+
+          if (nameMatch || phoneMatch) {
             resolvedKey = k;
             break;
           }
@@ -214,140 +240,170 @@ export default function PayerManager({
       return prj ? prj.name : 'Unassigned / Main Site';
     };
 
+    // Helper to resolve entry key if paidBy is missing or typed in text
+    const resolveEntryKey = (explicitPaidBy?: string, notes?: string, altText?: string) => {
+      const rawRef = (explicitPaidBy || '').trim();
+      if (rawRef) {
+        const entry = getOrCreateEntry(rawRef);
+        if (entry) return entry;
+      }
+
+      // Fallback: search for registered payer name inside notes or altText
+      const fullText = `${notes || ''} ${altText || ''}`.toLowerCase();
+      if (fullText) {
+        for (const pObj of (payers || [])) {
+          const pClean = pObj.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          const pFirstName = pClean.split(' ')[0];
+          if (pClean && pClean.length >= 3 && fullText.includes(pClean)) {
+            return getOrCreateEntry(pObj.id, pObj.name);
+          }
+          if (pFirstName && pFirstName.length >= 3 && fullText.includes(pFirstName)) {
+            return getOrCreateEntry(pObj.id, pObj.name);
+          }
+        }
+        for (const lObj of (labours || [])) {
+          const lClean = lObj.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          const lFirstName = lClean.split(' ')[0];
+          if (lClean && lClean.length >= 3 && fullText.includes(lClean)) {
+            return getOrCreateEntry(lObj.id, lObj.name);
+          }
+          if (lFirstName && lFirstName.length >= 3 && fullText.includes(lFirstName)) {
+            return getOrCreateEntry(lObj.id, lObj.name);
+          }
+        }
+      }
+      return null;
+    };
+
     // 1. Labour Micro Advances
     advanceRecords.forEach(adv => {
-      if (adv.paidBy) {
-        const entry = getOrCreateEntry(adv.paidBy);
-        if (entry) {
-          const actualAmount = adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount;
-          entry.totalDisbursed += actualAmount;
-          entry.advancesTotal += actualAmount;
-          entry.transactionCount += 1;
-          const curr = entry.projectAmounts.get(adv.projectId) || 0;
-          entry.projectAmounts.set(adv.projectId, curr + actualAmount);
+      const entry = resolveEntryKey(adv.paidBy, adv.description);
+      if (entry) {
+        const partnerVal = Number(adv.partnerAmount);
+        const actualAmount = (adv.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(adv.amount) || 0);
+        entry.totalDisbursed += actualAmount;
+        entry.advancesTotal += actualAmount;
+        entry.transactionCount += 1;
+        const curr = entry.projectAmounts.get(adv.projectId) || 0;
+        entry.projectAmounts.set(adv.projectId, curr + actualAmount);
 
-          entry.transactions.push({
-            id: adv.id,
-            date: adv.date,
-            category: 'Labour Advance',
-            projectId: adv.projectId,
-            projectName: getProjectName(adv.projectId),
-            description: `${adv.description || 'Labour Micro Advance'}${adv.isPartnerHelp ? ' (🤝 Partner Support)' : ''}`,
-            amount: actualAmount
-          });
-        }
+        entry.transactions.push({
+          id: adv.id,
+          date: adv.date,
+          category: 'Labour Advance',
+          projectId: adv.projectId,
+          projectName: getProjectName(adv.projectId),
+          description: `${adv.description || 'Labour Micro Advance'}${adv.isPartnerHelp ? ' (🤝 Partner Support)' : ''}`,
+          amount: actualAmount
+        });
       }
     });
 
     // 2. Wage Settlements
     paymentRecords.forEach(pay => {
       const paidBy = (pay as any).paidBy;
-      if (paidBy) {
-        const entry = getOrCreateEntry(paidBy);
-        if (entry) {
-          entry.totalDisbursed += pay.amountPaid;
-          entry.paymentsTotal += pay.amountPaid;
-          entry.transactionCount += 1;
-          const curr = entry.projectAmounts.get(pay.projectId) || 0;
-          entry.projectAmounts.set(pay.projectId, curr + pay.amountPaid);
+      const entry = resolveEntryKey(paidBy, pay.notes);
+      if (entry) {
+        const payAmt = Number(pay.amountPaid) || 0;
+        entry.totalDisbursed += payAmt;
+        entry.paymentsTotal += payAmt;
+        entry.transactionCount += 1;
+        const curr = entry.projectAmounts.get(pay.projectId) || 0;
+        entry.projectAmounts.set(pay.projectId, curr + payAmt);
 
-          entry.transactions.push({
-            id: pay.id,
-            date: pay.date,
-            category: 'Wage Settlement',
-            projectId: pay.projectId,
-            projectName: getProjectName(pay.projectId),
-            description: pay.notes || `Wage Payout (${pay.daysWorked} days worked)`,
-            amount: pay.amountPaid
-          });
-        }
+        entry.transactions.push({
+          id: pay.id,
+          date: pay.date,
+          category: 'Wage Settlement',
+          projectId: pay.projectId,
+          projectName: getProjectName(pay.projectId),
+          description: pay.notes || `Wage Payout (${pay.daysWorked} days worked)`,
+          amount: payAmt
+        });
       }
     });
 
     // 3. Daily Operational Expenses
     dailyExpenses.forEach(exp => {
-      if (exp.payerId) {
-        const entry = getOrCreateEntry(exp.payerId);
-        if (entry) {
-          const actualAmount = exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount;
-          entry.totalDisbursed += actualAmount;
-          entry.expensesTotal += actualAmount;
-          entry.transactionCount += 1;
-          const curr = entry.projectAmounts.get(exp.projectId) || 0;
-          entry.projectAmounts.set(exp.projectId, curr + actualAmount);
+      const entry = resolveEntryKey(exp.payerId, exp.description, exp.subCategory);
+      if (entry) {
+        const partnerVal = Number(exp.partnerAmount);
+        const actualAmount = (exp.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(exp.amount) || 0);
+        entry.totalDisbursed += actualAmount;
+        entry.expensesTotal += actualAmount;
+        entry.transactionCount += 1;
+        const curr = entry.projectAmounts.get(exp.projectId) || 0;
+        entry.projectAmounts.set(exp.projectId, curr + actualAmount);
 
-          entry.transactions.push({
-            id: exp.id,
-            date: exp.date,
-            category: 'Daily Expense',
-            projectId: exp.projectId,
-            projectName: getProjectName(exp.projectId),
-            description: `${exp.description || `Misc Expense (${exp.subCategory})`}${exp.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${exp.amount.toLocaleString()})` : ''}`,
-            amount: actualAmount
-          });
-        }
+        entry.transactions.push({
+          id: exp.id,
+          date: exp.date,
+          category: 'Daily Expense',
+          projectId: exp.projectId,
+          projectName: getProjectName(exp.projectId),
+          description: `${exp.description || `Misc Expense (${exp.subCategory})`}${exp.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
+          amount: actualAmount
+        });
       }
     });
 
     // 4. Hotel & Mess Food Advances
     hotelAdvances.forEach(ha => {
       const paidBy = (ha as any).paidBy;
-      if (paidBy) {
-        const entry = getOrCreateEntry(paidBy);
-        if (entry) {
-          const actualAmount = ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount;
-          entry.totalDisbursed += actualAmount;
-          entry.hotelTotal += actualAmount;
-          entry.transactionCount += 1;
-          const curr = entry.projectAmounts.get(ha.projectId) || 0;
-          entry.projectAmounts.set(ha.projectId, curr + actualAmount);
+      const entry = resolveEntryKey(paidBy, ha.notes, ha.hotelName);
+      if (entry) {
+        const partnerVal = Number(ha.partnerAmount);
+        const actualAmount = (ha.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(ha.amount) || 0);
+        entry.totalDisbursed += actualAmount;
+        entry.hotelTotal += actualAmount;
+        entry.transactionCount += 1;
+        const curr = entry.projectAmounts.get(ha.projectId) || 0;
+        entry.projectAmounts.set(ha.projectId, curr + actualAmount);
 
-          entry.transactions.push({
-            id: ha.id,
-            date: ha.date,
-            category: 'Hotel Food',
-            projectId: ha.projectId,
-            projectName: getProjectName(ha.projectId),
-            description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}${ha.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${ha.amount.toLocaleString()})` : ''}`,
-            amount: actualAmount
-          });
-        }
+        entry.transactions.push({
+          id: ha.id,
+          date: ha.date,
+          category: 'Hotel Food',
+          projectId: ha.projectId,
+          projectName: getProjectName(ha.projectId),
+          description: `${ha.hotelName} ${ha.notes ? `(${ha.notes})` : ''}${ha.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
+          amount: actualAmount
+        });
       }
     });
 
     // 5. Material Stock Procurement
     materials.forEach(m => {
       const paidBy = (m as any).paidBy;
-      if (paidBy) {
-        const entry = getOrCreateEntry(paidBy);
-        if (entry) {
-          const actualAmount = m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost;
-          entry.totalDisbursed += actualAmount;
-          entry.materialsTotal += actualAmount;
-          entry.transactionCount += 1;
-          const curr = entry.projectAmounts.get(m.projectId) || 0;
-          entry.projectAmounts.set(m.projectId, curr + actualAmount);
+      const entry = resolveEntryKey(paidBy, m.name, m.supplier);
+      if (entry) {
+        const partnerVal = Number(m.partnerAmount);
+        const actualAmount = (m.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(m.cost) || 0);
+        entry.totalDisbursed += actualAmount;
+        entry.materialsTotal += actualAmount;
+        entry.transactionCount += 1;
+        const curr = entry.projectAmounts.get(m.projectId) || 0;
+        entry.projectAmounts.set(m.projectId, curr + actualAmount);
 
-          entry.transactions.push({
-            id: m.id,
-            date: m.dateBought,
-            category: 'Material Stock',
-            projectId: m.projectId,
-            projectName: getProjectName(m.projectId),
-            description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}${m.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${m.cost.toLocaleString()})` : ''}`,
-            amount: actualAmount
-          });
-        }
+        entry.transactions.push({
+          id: m.id,
+          date: m.dateBought,
+          category: 'Material Stock',
+          projectId: m.projectId,
+          projectName: getProjectName(m.projectId),
+          description: `${m.name} (${m.quantityBought} ${m.unit}) - ${m.supplier || 'Vendor'}${m.isPartnerHelp ? ` (🤝 Partner Support - Outlay ₹${actualAmount.toLocaleString()})` : ''}`,
+          amount: actualAmount
+        });
       }
     });
 
     // 6. GST Invoices Tax Paid
     gstRecords.forEach(g => {
       const paidBy = (g as any).paidBy;
-      if (paidBy && g.type === 'paid') {
-        const entry = getOrCreateEntry(paidBy);
+      if (g.type === 'paid') {
+        const entry = resolveEntryKey(paidBy, g.partyName, g.invoiceNo);
         if (entry) {
-          const totalPaid = g.amount + g.gstAmount;
+          const totalPaid = (Number(g.amount) || 0) + (Number(g.gstAmount) || 0);
           entry.totalDisbursed += totalPaid;
           entry.gstTotal += totalPaid;
           entry.transactionCount += 1;
@@ -369,8 +425,8 @@ export default function PayerManager({
 
     // 7. Petty Cash Top-Ups
     pettyCashEntries.forEach(pc => {
-      if (pc.type === 'top_up' && pc.payerId) {
-        const entry = getOrCreateEntry(pc.payerId);
+      if (pc.type === 'top_up') {
+        const entry = resolveEntryKey(pc.payerId, pc.description, pc.category);
         if (entry) {
           const pcAmt = Number(pc.amount) || 0;
           entry.totalDisbursed += pcAmt;
@@ -508,16 +564,17 @@ export default function PayerManager({
       });
       siteBreakdown.sort((a, b) => b.amount - a.amount);
 
-      // Group by category
-      const categoryBreakdown: Array<{ name: string; amount: number; percentage: number }> = [];
-      if (p.expensesTotal > 0) categoryBreakdown.push({ name: 'Daily Expenses', amount: p.expensesTotal, percentage: Number(((p.expensesTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.advancesTotal > 0) categoryBreakdown.push({ name: 'Labour Advances', amount: p.advancesTotal, percentage: Number(((p.advancesTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.paymentsTotal > 0) categoryBreakdown.push({ name: 'Wage Settlements', amount: p.paymentsTotal, percentage: Number(((p.paymentsTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.materialsTotal > 0) categoryBreakdown.push({ name: 'Material Stock', amount: p.materialsTotal, percentage: Number(((p.materialsTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.hotelTotal > 0) categoryBreakdown.push({ name: 'Hotel & Food', amount: p.hotelTotal, percentage: Number(((p.hotelTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.gstTotal > 0) categoryBreakdown.push({ name: 'GST Tax', amount: p.gstTotal, percentage: Number(((p.gstTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      if (p.pettyCashTotal > 0) categoryBreakdown.push({ name: 'Petty Cash', amount: p.pettyCashTotal, percentage: Number(((p.pettyCashTotal / p.disbursedAmount) * 100).toFixed(1)) });
-      categoryBreakdown.sort((a, b) => b.amount - a.amount);
+      // Group by category dynamically from filtered transactions
+      const catMap = new Map<string, number>();
+      p.filteredTransactions.forEach(t => {
+        const catName = t.category || 'Other Payments';
+        catMap.set(catName, (catMap.get(catName) || 0) + t.amount);
+      });
+      const categoryBreakdown = Array.from(catMap.entries()).map(([catName, amt]) => ({
+        name: catName,
+        amount: amt,
+        percentage: p.disbursedAmount > 0 ? Number(((amt / p.disbursedAmount) * 100).toFixed(1)) : 0
+      })).sort((a, b) => b.amount - a.amount);
 
       return {
         id: p.id,

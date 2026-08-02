@@ -581,8 +581,14 @@ export default function MaterialTracker({
               {payers && payers.length > 0 ? (
                 <div className="space-y-1">
                   <select
-                    value={paidBy}
-                    onChange={(e) => setPaidBy(e.target.value)}
+                    value={payers.some(p => p.id === paidBy) ? paidBy : (paidBy ? 'custom_input' : '')}
+                    onChange={(e) => {
+                      if (e.target.value !== 'custom_input') {
+                        setPaidBy(e.target.value);
+                      } else if (!paidBy || payers.some(p => p.id === paidBy)) {
+                        setPaidBy('');
+                      }
+                    }}
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 bg-white"
                   >
                     <option value="">-- Select Disburser / Payer --</option>
@@ -591,13 +597,13 @@ export default function MaterialTracker({
                     ))}
                     <option value="custom_input">+ Enter Custom Payer Name...</option>
                   </select>
-                  {paidBy === 'custom_input' && (
+                  {(!paidBy || !payers.some(p => p.id === paidBy)) && (
                     <input
                       type="text"
-                      placeholder="Enter custom payer name"
+                      value={paidBy}
+                      placeholder="Enter custom disburser / payer name (e.g. Basanta Deka)"
                       onChange={(e) => setPaidBy(e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900 mt-1"
-                      autoFocus
                     />
                   )}
                 </div>

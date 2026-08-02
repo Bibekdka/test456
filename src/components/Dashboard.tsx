@@ -275,8 +275,12 @@ export default function Dashboard({
     // Material cost
     const materialCost = pMaterials.reduce((sum, m) => sum + m.cost, 0);
 
-    // Food Cost (Logged Meals)
-    const foodCost = pFoodLogs.reduce((sum, f) => sum + (f.mealsCount * f.cost), 0);
+    // Hotel & Food Advances (FD payments, room advances, food allowances)
+    const pHotelAdvances = (hotelAdvances || []).filter(h => scopeIds.has(h.projectId));
+    const hotelAdvancesCost = pHotelAdvances.reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+
+    // Food & Accommodation Cost (Logged Meals + Hotel/Food Advances)
+    const foodCost = pFoodLogs.reduce((sum, f) => sum + ((Number(f.mealsCount) || 0) * (Number(f.cost) || 0)), 0) + hotelAdvancesCost;
     const pLabourIds = new Set(pAttendance.map(a => a.labourId));
 
     // GST Paid and Claimed
@@ -360,30 +364,56 @@ export default function Dashboard({
 
       const cleanedKey = rawKey.replace(/\s*\([^)]*\)/g, '').trim();
       const targetLower = cleanedKey.toLowerCase();
+      const targetFirstName = targetLower.split(' ')[0];
 
-      // Find registered payer or labour registry member by ID or case-insensitive name
+      // Find registered payer or labour registry member by ID or flexible case-insensitive name matching
       const registered = (payers || []).find(p => {
         const pIdLower = p.id.toLowerCase();
         const pNameClean = p.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        return p.id === rawKey || pIdLower === targetLower || pNameClean === targetLower;
+        const pFirstName = pNameClean.split(' ')[0];
+        return p.id === rawKey || 
+               pIdLower === targetLower || 
+               pNameClean === targetLower ||
+               (targetLower.length >= 3 && pNameClean.includes(targetLower)) ||
+               (pNameClean.length >= 3 && targetLower.includes(pNameClean)) ||
+               (targetFirstName.length >= 3 && pFirstName === targetFirstName);
       });
 
       const labourMember = !registered ? (labours || []).find(l => {
         const lIdLower = l.id.toLowerCase();
         const lNameClean = l.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-        return l.id === rawKey || lIdLower === targetLower || lNameClean === targetLower;
+        const lFirstName = lNameClean.split(' ')[0];
+        return l.id === rawKey || 
+               lIdLower === targetLower || 
+               lNameClean === targetLower ||
+               (targetLower.length >= 3 && lNameClean.includes(targetLower)) ||
+               (lNameClean.length >= 3 && targetLower.includes(lNameClean)) ||
+               (targetFirstName.length >= 3 && lFirstName === targetFirstName);
       }) : undefined;
 
       const canonicalKey = registered ? registered.id : (labourMember ? labourMember.id : targetLower);
       const displayName = registered ? registered.name : (labourMember ? labourMember.name : (defaultName || cleanedKey || rawKey));
       const targetLowerName = displayName.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
 
-      // Check if map already has this canonical key OR if any existing entry shares the same name
+      // Check if map already has this canonical key OR if any existing entry shares the same name or phone number
       let resolvedKey = canonicalKey;
+      const targetPhone = (registered?.phone || labourMember?.contact || labourMember?.phone || phoneOverride || '').trim().replace(/\D/g, '');
+
       if (!map.has(canonicalKey)) {
         for (const [k, v] of map.entries()) {
           const vNameClean = v.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
-          if (vNameClean === targetLowerName || (targetLowerName.length > 3 && vNameClean.includes(targetLowerName)) || (vNameClean.length > 3 && targetLowerName.includes(vNameClean))) {
+          const vPhoneClean = (v.phone || '').trim().replace(/\D/g, '');
+          const vFirstName = vNameClean.split(' ')[0];
+          const tFirstName = targetLowerName.split(' ')[0];
+
+          const nameMatch = vNameClean === targetLowerName || 
+            (targetLowerName.length >= 3 && vNameClean.includes(targetLowerName)) || 
+            (vNameClean.length >= 3 && targetLowerName.includes(vNameClean)) ||
+            (tFirstName.length >= 3 && vFirstName === tFirstName);
+
+          const phoneMatch = Boolean(targetPhone && vPhoneClean && targetPhone.length >= 8 && targetPhone === vPhoneClean);
+
+          if (nameMatch || phoneMatch) {
             resolvedKey = k;
             break;
           }
@@ -418,6 +448,41 @@ export default function Dashboard({
       return existing;
     };
 
+    // Helper to resolve payer key if paidBy is missing or typed in text
+    const resolvePayerKey = (explicitPaidBy?: string, notes?: string, altText?: string, phoneOverride?: string) => {
+      const rawRef = (explicitPaidBy || '').trim();
+      if (rawRef) {
+        const p = getOrCreatePayer(rawRef, undefined, phoneOverride);
+        if (p) return p;
+      }
+
+      // Fallback: search for registered payer name inside notes or altText
+      const fullText = `${notes || ''} ${altText || ''}`.toLowerCase();
+      if (fullText) {
+        for (const pObj of (payers || [])) {
+          const pClean = pObj.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          const pFirstName = pClean.split(' ')[0];
+          if (pClean && pClean.length >= 3 && fullText.includes(pClean)) {
+            return getOrCreatePayer(pObj.id, pObj.name, pObj.phone);
+          }
+          if (pFirstName && pFirstName.length >= 3 && fullText.includes(pFirstName)) {
+            return getOrCreatePayer(pObj.id, pObj.name, pObj.phone);
+          }
+        }
+        for (const lObj of (labours || [])) {
+          const lClean = lObj.name.replace(/\s*\([^)]*\)/g, '').trim().toLowerCase();
+          const lFirstName = lClean.split(' ')[0];
+          if (lClean && lClean.length >= 3 && fullText.includes(lClean)) {
+            return getOrCreatePayer(lObj.id, lObj.name, lObj.contact || lObj.phone);
+          }
+          if (lFirstName && lFirstName.length >= 3 && fullText.includes(lFirstName)) {
+            return getOrCreatePayer(lObj.id, lObj.name, lObj.contact || lObj.phone);
+          }
+        }
+      }
+      return null;
+    };
+
     // Registered Payers
     (payers || []).forEach(p => {
       getOrCreatePayer(p.id, p.name, p.phone);
@@ -425,91 +490,85 @@ export default function Dashboard({
 
     // Advances
     (advanceRecords || []).forEach(adv => {
-      if (adv.paidBy) {
-        const p = getOrCreatePayer(adv.paidBy, undefined, adv.partnerPhone);
-        if (p) {
-          const advContrib = Number(adv.isPartnerHelp && adv.partnerAmount !== undefined ? adv.partnerAmount : adv.amount) || 0;
-          p.totalInvested += advContrib;
-          p.advancesTotal += advContrib;
-          if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
-          p.transactionCount += 1;
-          const curr = p.projectAmounts.get(adv.projectId) || 0;
-          p.projectAmounts.set(adv.projectId, curr + advContrib);
-        }
+      const p = resolvePayerKey(adv.paidBy, adv.description, undefined, adv.partnerPhone);
+      if (p) {
+        const partnerVal = Number(adv.partnerAmount);
+        const advContrib = (adv.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(adv.amount) || 0);
+        p.totalInvested += advContrib;
+        p.advancesTotal += advContrib;
+        if (adv.isPartnerHelp) p.partnerHelpTotal += advContrib;
+        p.transactionCount += 1;
+        const curr = p.projectAmounts.get(adv.projectId) || 0;
+        p.projectAmounts.set(adv.projectId, curr + advContrib);
       }
     });
 
     // Payments
     (paymentRecords || []).forEach(pay => {
       const paidBy = (pay as any).paidBy;
-      if (paidBy) {
-        const p = getOrCreatePayer(paidBy);
-        if (p) {
-          const payContrib = Number(pay.amountPaid) || 0;
-          p.totalInvested += payContrib;
-          p.paymentsTotal += payContrib;
-          p.transactionCount += 1;
-          const curr = p.projectAmounts.get(pay.projectId) || 0;
-          p.projectAmounts.set(pay.projectId, curr + payContrib);
-        }
+      const p = resolvePayerKey(paidBy, pay.notes);
+      if (p) {
+        const payContrib = Number(pay.amountPaid) || 0;
+        p.totalInvested += payContrib;
+        p.paymentsTotal += payContrib;
+        p.transactionCount += 1;
+        const curr = p.projectAmounts.get(pay.projectId) || 0;
+        p.projectAmounts.set(pay.projectId, curr + payContrib);
       }
     });
 
     // Daily Expenses
     (dailyExpenses || []).forEach(exp => {
-      if (exp.payerId) {
-        const p = getOrCreatePayer(exp.payerId, undefined, exp.partnerPhone);
-        if (p) {
-          const expContrib = Number(exp.isPartnerHelp && exp.partnerAmount !== undefined ? exp.partnerAmount : exp.amount) || 0;
-          p.totalInvested += expContrib;
-          p.expensesTotal += expContrib;
-          if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
-          p.transactionCount += 1;
-          const curr = p.projectAmounts.get(exp.projectId) || 0;
-          p.projectAmounts.set(exp.projectId, curr + expContrib);
-        }
+      const p = resolvePayerKey(exp.payerId, exp.description, exp.subCategory, exp.partnerPhone);
+      if (p) {
+        const partnerVal = Number(exp.partnerAmount);
+        const expContrib = (exp.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(exp.amount) || 0);
+        p.totalInvested += expContrib;
+        p.expensesTotal += expContrib;
+        if (exp.isPartnerHelp) p.partnerHelpTotal += expContrib;
+        p.transactionCount += 1;
+        const curr = p.projectAmounts.get(exp.projectId) || 0;
+        p.projectAmounts.set(exp.projectId, curr + expContrib);
       }
     });
 
     // Hotel Advances
     (hotelAdvances || []).forEach(ha => {
       const paidBy = (ha as any).paidBy;
-      if (paidBy) {
-        const p = getOrCreatePayer(paidBy, undefined, ha.partnerPhone);
-        if (p) {
-          const haContrib = Number(ha.isPartnerHelp && ha.partnerAmount !== undefined ? ha.partnerAmount : ha.amount) || 0;
-          p.totalInvested += haContrib;
-          p.hotelTotal += haContrib;
-          if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
-          p.transactionCount += 1;
-          const curr = p.projectAmounts.get(ha.projectId) || 0;
-          p.projectAmounts.set(ha.projectId, curr + haContrib);
-        }
+      const p = resolvePayerKey(paidBy, ha.notes, ha.hotelName, ha.partnerPhone);
+      if (p) {
+        const partnerVal = Number(ha.partnerAmount);
+        const haContrib = (ha.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(ha.amount) || 0);
+        p.totalInvested += haContrib;
+        p.hotelTotal += haContrib;
+        if (ha.isPartnerHelp) p.partnerHelpTotal += haContrib;
+        p.transactionCount += 1;
+        const curr = p.projectAmounts.get(ha.projectId) || 0;
+        p.projectAmounts.set(ha.projectId, curr + haContrib);
       }
     });
 
     // Materials
     (materials || []).forEach(m => {
       const paidBy = (m as any).paidBy;
-      if (paidBy) {
-        const p = getOrCreatePayer(paidBy, undefined, m.partnerPhone);
-        if (p) {
-          const mContrib = Number(m.isPartnerHelp && m.partnerAmount !== undefined ? m.partnerAmount : m.cost) || 0;
-          p.totalInvested += mContrib;
-          p.materialsTotal += mContrib;
-          if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
-          p.transactionCount += 1;
-          const curr = p.projectAmounts.get(m.projectId) || 0;
-          p.projectAmounts.set(m.projectId, curr + mContrib);
-        }
+      const p = resolvePayerKey(paidBy, m.name, m.supplier, m.partnerPhone);
+      if (p) {
+        const partnerVal = Number(m.partnerAmount);
+        const mContrib = (m.isPartnerHelp && !isNaN(partnerVal) && partnerVal > 0) ? partnerVal : (Number(m.cost) || 0);
+        p.totalInvested += mContrib;
+        p.materialsTotal += mContrib;
+        if (m.isPartnerHelp) p.partnerHelpTotal += mContrib;
+        p.transactionCount += 1;
+        const curr = p.projectAmounts.get(m.projectId) || 0;
+        p.projectAmounts.set(m.projectId, curr + mContrib);
       }
     });
 
     // GST Tax Paid
     (gstRecords || []).forEach(g => {
       const paidBy = (g as any).paidBy;
-      if (paidBy && g.type === 'paid') {
-        const p = getOrCreatePayer(paidBy, undefined, g.partnerPhone);
+      if (g.type === 'paid') {
+        const p = resolvePayerKey(paidBy, g.partyName, g.invoiceNo, g.partnerPhone);
         if (p) {
           const totalPaid = (Number(g.amount) || 0) + (Number(g.gstAmount) || 0);
           p.totalInvested += totalPaid;
@@ -522,8 +581,8 @@ export default function Dashboard({
 
     // Petty Cash Top-Ups
     (pettyCashEntries || []).forEach(pc => {
-      if (pc.type === 'top_up' && pc.payerId) {
-        const p = getOrCreatePayer(pc.payerId);
+      if (pc.type === 'top_up') {
+        const p = resolvePayerKey(pc.payerId, pc.description, pc.category);
         if (p) {
           const pcAmt = Number(pc.amount) || 0;
           p.totalInvested += pcAmt;
