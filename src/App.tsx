@@ -185,7 +185,7 @@ export default function App() {
 
   const handleExportBackup = () => {
     const data = {
-      version: 1,
+      version: 2,
       timestamp: new Date().toISOString(),
       projects,
       labours,
@@ -202,6 +202,9 @@ export default function App() {
       dailyExpenses,
       partnerDeals,
       partnerSettlements,
+      projectPhases,
+      pettyCashEntries,
+      projectDocuments,
       foodCalculationStartDate
     };
 
@@ -1295,7 +1298,7 @@ export default function App() {
   };
 
   // ----------------------------------------------------
-  // Database backup import
+  // Full Database Backup Import
   // ----------------------------------------------------
   const handleImportBackup = async (backupData: any) => {
     setLoading(true);
@@ -1316,6 +1319,9 @@ export default function App() {
       await clearStore('payers');
       await clearStore('partner_deals');
       await clearStore('partner_settlements');
+      await clearStore('project_phases');
+      await clearStore('petty_cash_entries');
+      await clearStore('project_documents');
 
       // Key fallbacks for backwards compatibility and server schema compatibility
       const pList = backupData.projects || [];
@@ -1333,6 +1339,9 @@ export default function App() {
       const payersList = backupData.payers || [];
       const partnerDealsList = backupData.partnerDeals || backupData.partner_deals || [];
       const partnerSettlementsList = backupData.partnerSettlements || backupData.partner_settlements || [];
+      const phasesList = backupData.projectPhases || backupData.project_phases || [];
+      const pettyCashList = backupData.pettyCashEntries || backupData.petty_cash_entries || [];
+      const docsList = backupData.projectDocuments || backupData.project_documents || [];
 
       // Populate database using ultra-fast bulk operations
       await putItems('projects', pList);
@@ -1350,6 +1359,9 @@ export default function App() {
       await putItems('payers', payersList);
       await putItems('partner_deals', partnerDealsList);
       await putItems('partner_settlements', partnerSettlementsList);
+      await putItems('project_phases', phasesList);
+      await putItems('petty_cash_entries', pettyCashList);
+      await putItems('project_documents', docsList);
 
       // Reload state
       setProjects(pList);
@@ -1367,6 +1379,9 @@ export default function App() {
       setPayers(payersList);
       setPartnerDeals(partnerDealsList);
       setPartnerSettlements(partnerSettlementsList);
+      setProjectPhases(phasesList);
+      setPettyCashEntries(pettyCashList);
+      setProjectDocuments(docsList);
 
       if (backupData.foodCalculationStartDate) {
         setFoodCalculationStartDate(backupData.foodCalculationStartDate);
@@ -1407,6 +1422,9 @@ export default function App() {
       await clearStore('payers');
       await clearStore('partner_deals');
       await clearStore('partner_settlements');
+      await clearStore('project_phases');
+      await clearStore('petty_cash_entries');
+      await clearStore('project_documents');
 
       // Re-seed and load standard clean sample database
       await loadDatabase();

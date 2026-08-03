@@ -85,6 +85,12 @@ export default function AttendanceTracker({
   // Toggle state for displaying former workers who have left work
   const [showLeftWorkersSection, setShowLeftWorkersSection] = useState(false);
 
+  // Metric dialogue modal states
+  const [showTotalWorkersModal, setShowTotalWorkersModal] = useState(false);
+  const [showActiveWorkersModal, setShowActiveWorkersModal] = useState(false);
+  const [totalWorkersSearch, setTotalWorkersSearch] = useState('');
+  const [activeWorkersSearch, setActiveWorkersSearch] = useState('');
+
   // Filter labours by active project site
   const projectLabours = labours.filter(l => !activeProject || isLabourInProjectScope(
     l,
@@ -748,6 +754,88 @@ export default function AttendanceTracker({
                 </div>
               )}
 
+              {/* Dialogue Boxes for Total Workers and Presently Active Workers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Box 1: Total Workers Box */}
+                <div 
+                  onClick={() => setShowTotalWorkersModal(true)}
+                  className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white rounded-xl p-4 sm:p-5 shadow-sm border border-indigo-700/60 cursor-pointer hover:border-indigo-500 hover:shadow-md transition-all group flex items-center justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="p-2 bg-indigo-500/20 text-indigo-300 rounded-lg group-hover:bg-indigo-500/30 transition">
+                        <Users className="w-5 h-5 text-indigo-300" />
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-indigo-200">
+                        Total Workers Box
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2 pt-1">
+                      <span className="text-3xl font-extrabold tracking-tight font-mono text-white">
+                        {projectLabours.length}
+                      </span>
+                      <span className="text-xs text-indigo-200 font-medium">Total Enrolled Workers</span>
+                    </div>
+                    <p className="text-[11px] text-indigo-300/80 leading-tight">
+                      Click to open Total Workers Dialogue &amp; full roster details.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTotalWorkersModal(true);
+                    }}
+                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Total Workers Dialogue</span>
+                    <Users className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Box 2: Presently Active Box */}
+                <div 
+                  onClick={() => setShowActiveWorkersModal(true)}
+                  className="bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 text-white rounded-xl p-4 sm:p-5 shadow-sm border border-emerald-700/60 cursor-pointer hover:border-emerald-500 hover:shadow-md transition-all group flex items-center justify-between"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="p-2 bg-emerald-500/20 text-emerald-300 rounded-lg group-hover:bg-emerald-500/30 transition">
+                        <CheckCircle className="w-5 h-5 text-emerald-300" />
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-200">
+                        Presently Active Box
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-2 pt-1">
+                      <span className="text-3xl font-extrabold tracking-tight font-mono text-emerald-400">
+                        {activeLabours.filter(l => {
+                          const st = trackerState[l.id]?.status;
+                          return st === 'present' || st === 'half_day';
+                        }).length}
+                      </span>
+                      <span className="text-xs text-emerald-200 font-medium">Present / Half-Day Today ({selectedDate})</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-300/80 leading-tight">
+                      Click to open Presently Active Dialogue for {selectedDate}.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowActiveWorkersModal(true);
+                    }}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition shadow-xs shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Presently Active Dialogue</span>
+                    <CheckCircle className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
               {/* Daily Attendance Summary & Quick Batch Entry */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-sm">
                 <div className="space-y-2">
@@ -755,9 +843,23 @@ export default function AttendanceTracker({
                     <span>📊</span> Daily Status Summary ({selectedDate})
                   </h4>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-200 text-slate-800">
-                      Total: {activeLabours.length}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowTotalWorkersModal(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-100 hover:bg-indigo-200 text-indigo-900 border border-indigo-200 transition cursor-pointer"
+                    >
+                      Total Workers: {projectLabours.length}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowActiveWorkersModal(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 transition cursor-pointer"
+                    >
+                      ⚡ Presently Active: {activeLabours.filter(l => {
+                        const st = trackerState[l.id]?.status;
+                        return st === 'present' || st === 'half_day';
+                      }).length}
+                    </button>
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                       🟢 Present: {activeLabours.filter(l => (trackerState[l.id]?.status || 'pending') === 'present').length}
                     </span>
@@ -1707,6 +1809,264 @@ export default function AttendanceTracker({
                   className="inline-flex w-full justify-center rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 text-sm font-semibold shadow-xs sm:ml-3 sm:w-auto transition cursor-pointer"
                 >
                   OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOTAL WORKERS DIALOGUE MODAL */}
+      {showTotalWorkersModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity" 
+            onClick={() => setShowTotalWorkersModal(false)} 
+          />
+
+          <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            <div className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-4xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+              
+              <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-indigo-600 rounded-lg text-white">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold tracking-tight">Total Workers Dialogue</h3>
+                    <p className="text-xs text-indigo-200">
+                      Site: <strong>{activeProject.name}</strong> • {projectLabours.length} Enrolled Workers Total
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTotalWorkersModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {/* Search & Action bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="relative w-full sm:w-72">
+                    <input
+                      type="text"
+                      placeholder="Search worker by name or phone..."
+                      value={totalWorkersSearch}
+                      onChange={(e) => setTotalWorkersSearch(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg pl-3 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <span>🖨️ Print List</span>
+                    </button>
+                    <span className="text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 px-2.5 py-1 rounded-lg font-mono">
+                      Total: {projectLabours.length} Workers
+                    </span>
+                  </div>
+                </div>
+
+                {/* Workers Table */}
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold border-b border-slate-200">
+                        <th className="p-3">#</th>
+                        <th className="p-3">Worker Name</th>
+                        <th className="p-3">Contact Phone</th>
+                        <th className="p-3">Daily Wage (Rs.)</th>
+                        <th className="p-3">Joining Date</th>
+                        <th className="p-3">Status</th>
+                        <th className="p-3 text-right">Advances Taken Today (Rs.)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {projectLabours
+                        .filter(l => !totalWorkersSearch || l.name.toLowerCase().includes(totalWorkersSearch.toLowerCase()) || (l.contact && l.contact.includes(totalWorkersSearch)))
+                        .map((l, idx) => {
+                          const state = trackerState[l.id] || { status: 'pending', advance: 0 };
+                          return (
+                            <tr key={l.id} className="hover:bg-slate-50">
+                              <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
+                              <td className="p-3 font-bold text-slate-900">{l.name}</td>
+                              <td className="p-3 font-mono text-slate-600">{l.contact || 'N/A'}</td>
+                              <td className="p-3 font-mono font-bold text-slate-800">₹{l.perDayWage}</td>
+                              <td className="p-3 font-mono text-slate-500">{l.joinedDate || activeProject.startDate}</td>
+                              <td className="p-3">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${l.status === 'left' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>
+                                  {l.status === 'left' ? 'Left Work' : 'Active'}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right font-mono font-bold text-amber-700">
+                                {state.advance > 0 ? `₹${state.advance}` : '-'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-between items-center">
+                <p className="text-xs text-slate-400 font-mono">
+                  All {projectLabours.length} registered workers in project database.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowTotalWorkersModal(false)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Close Dialogue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRESENTLY ACTIVE WORKERS DIALOGUE MODAL */}
+      {showActiveWorkersModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity" 
+            onClick={() => setShowActiveWorkersModal(false)} 
+          />
+
+          <div className="flex min-h-full items-center justify-center p-4 text-center sm:p-6">
+            <div className="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all w-full max-w-4xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+              
+              <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-600 rounded-lg text-white">
+                    <CheckCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold tracking-tight">Presently Active Workers Dialogue</h3>
+                    <p className="text-xs text-emerald-200">
+                      Site: <strong>{activeProject.name}</strong> • Active On Site Date: <strong>{selectedDate}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowActiveWorkersModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {/* Search & Action bar */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="relative w-full sm:w-72">
+                    <input
+                      type="text"
+                      placeholder="Search active worker by name..."
+                      value={activeWorkersSearch}
+                      onChange={(e) => setActiveWorkersSearch(e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg pl-3 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <span>🖨️ Print Active List</span>
+                    </button>
+                    <span className="text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg font-mono">
+                      Presently Active: {activeLabours.filter(l => {
+                        const st = trackerState[l.id]?.status;
+                        return st === 'present' || st === 'half_day';
+                      }).length} Workers
+                    </span>
+                  </div>
+                </div>
+
+                {/* Presently Active Table */}
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold border-b border-slate-200">
+                        <th className="p-3">#</th>
+                        <th className="p-3">Worker Name</th>
+                        <th className="p-3">Contact</th>
+                        <th className="p-3">Status Today</th>
+                        <th className="p-3 font-mono">Rate (Rs./day)</th>
+                        <th className="p-3 font-mono text-emerald-800">Earned Wage Today</th>
+                        <th className="p-3 text-right">Advance Taken Today (Rs.)</th>
+                        <th className="p-3">Paying Officer / Note</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {activeLabours
+                        .filter(l => {
+                          const st = trackerState[l.id]?.status;
+                          return st === 'present' || st === 'half_day';
+                        })
+                        .filter(l => !activeWorkersSearch || l.name.toLowerCase().includes(activeWorkersSearch.toLowerCase()))
+                        .map((l, idx) => {
+                          const state = trackerState[l.id] || { status: 'present', advance: 0, note: '', paidBy: '' };
+                          const earnedToday = state.status === 'present' ? l.perDayWage : l.perDayWage / 2;
+                          return (
+                            <tr key={l.id} className="hover:bg-slate-50">
+                              <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
+                              <td className="p-3 font-bold text-slate-900">{l.name}</td>
+                              <td className="p-3 font-mono text-slate-600">{l.contact || 'N/A'}</td>
+                              <td className="p-3">
+                                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${state.status === 'present' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                                  {state.status === 'present' ? '🟢 Present' : '🟡 Half-Day'}
+                                </span>
+                              </td>
+                              <td className="p-3 font-mono">₹{l.perDayWage}</td>
+                              <td className="p-3 font-mono font-bold text-emerald-700">₹{earnedToday}</td>
+                              <td className="p-3 text-right font-mono font-bold text-rose-600">
+                                {state.advance > 0 ? `₹${state.advance}` : '-'}
+                              </td>
+                              <td className="p-3 text-slate-600 font-mono text-[11px]">
+                                {state.paidBy ? `${state.paidBy}${state.note ? ` (${state.note})` : ''}` : (state.note || '-')}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {activeLabours.filter(l => {
+                        const st = trackerState[l.id]?.status;
+                        return st === 'present' || st === 'half_day';
+                      }).length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-slate-400 text-xs">
+                            No workers marked Present or Half-Day on {selectedDate} yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 flex justify-between items-center">
+                <p className="text-xs text-slate-400 font-mono">
+                  Attendance date: {selectedDate}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowActiveWorkersModal(false)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Close Dialogue
                 </button>
               </div>
             </div>

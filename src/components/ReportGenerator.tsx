@@ -1039,7 +1039,7 @@ export default function ReportGenerator({
       return;
     }
     const data = {
-      version: 1,
+      version: 2,
       timestamp: new Date().toISOString(),
       projects,
       labours,
@@ -1053,7 +1053,11 @@ export default function ReportGenerator({
       hotelAdvances,
       foodLogs,
       payers,
-      dailyExpenses
+      dailyExpenses,
+      projectPhases,
+      pettyCashEntries,
+      projectDocuments,
+      foodCalculationStartDate,
     };
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

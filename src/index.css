@@ -40,3 +40,51 @@ html.dark ::-webkit-scrollbar-thumb {
 html.dark ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Print Optimization Styles */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+
+  header, nav, aside, button:not(.printable-button), .no-print, [role="dialog"]:not(.printable-dialog), .toast-container {
+    display: none !important;
+  }
+
+  main {
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  th, td {
+    padding: 6px 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #000000 !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    font-weight: bold !important;
+  }
+
+  .shadow-sm, .shadow-md, .shadow-lg, .shadow-xs {
+    box-shadow: none !important;
+  }
+}
