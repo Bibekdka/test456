@@ -1818,9 +1818,9 @@ export default function AttendanceTracker({
 
       {/* TOTAL WORKERS DIALOGUE MODAL */}
       {showTotalWorkersModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto printable-dialog" role="dialog" aria-modal="true">
           <div 
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity" 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity no-print" 
             onClick={() => setShowTotalWorkersModal(false)} 
           />
 
@@ -1936,9 +1936,9 @@ export default function AttendanceTracker({
 
       {/* PRESENTLY ACTIVE WORKERS DIALOGUE MODAL */}
       {showActiveWorkersModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-50 overflow-y-auto printable-dialog" role="dialog" aria-modal="true">
           <div 
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity" 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity no-print" 
             onClick={() => setShowActiveWorkersModal(false)} 
           />
 

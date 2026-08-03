@@ -427,14 +427,16 @@ export function calculateConsolidatedPayerFinancials(
   // 4. Hotel & Mess Food Advances
   hotelAdvances.forEach(ha => {
     const totalAmount = Number(ha.amount) || 0;
-    const paidBy = (ha as any).paidBy;
+    const primaryPayer = ha.paidBy || (ha as any).payerId;
+    const partnerRef = ha.partnerPhone || (ha as any).partnerName || (ha as any).partnerId;
+
     if (ha.isPartnerHelp) {
       const partnerVal = Number(ha.partnerAmount);
       const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
       const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-      const partnerEntry = resolvePartnerHelper(ha.partnerPhone, ha.notes, ha.hotelName);
-      const disburserEntry = paidBy ? resolveEntryKey(paidBy, ha.notes, ha.hotelName) : null;
+      const partnerEntry = resolvePartnerHelper(partnerRef, ha.notes, ha.hotelName);
+      const disburserEntry = primaryPayer ? resolveEntryKey(primaryPayer, ha.notes, ha.hotelName) : resolveEntryKey(undefined, ha.notes, ha.hotelName);
 
       if (partnerEntry) {
         partnerEntry.totalDisbursed += partnerHelpAmount;
@@ -500,7 +502,7 @@ export function calculateConsolidatedPayerFinancials(
         });
       }
     } else {
-      const entry = resolveEntryKey(paidBy, ha.notes, ha.hotelName);
+      const entry = resolveEntryKey(primaryPayer, ha.notes, ha.hotelName);
       if (entry) {
         entry.totalDisbursed += totalAmount;
         entry.hotelTotal += totalAmount;
@@ -524,14 +526,16 @@ export function calculateConsolidatedPayerFinancials(
   // 5. Material Stock Procurement
   materials.forEach(m => {
     const totalAmount = Number(m.cost) || 0;
-    const paidBy = (m as any).paidBy;
+    const primaryPayer = m.paidBy || (m as any).payerId;
+    const partnerRef = m.partnerPhone || (m as any).partnerName || (m as any).partnerId;
+
     if (m.isPartnerHelp) {
       const partnerVal = Number(m.partnerAmount);
       const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
       const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-      const partnerEntry = resolvePartnerHelper(m.partnerPhone, m.name, m.supplier);
-      const disburserEntry = paidBy ? resolveEntryKey(paidBy, m.name, m.supplier) : null;
+      const partnerEntry = resolvePartnerHelper(partnerRef, m.name, m.supplier);
+      const disburserEntry = primaryPayer ? resolveEntryKey(primaryPayer, m.name, m.supplier) : resolveEntryKey(undefined, m.name, m.supplier);
 
       if (partnerEntry) {
         partnerEntry.totalDisbursed += partnerHelpAmount;
@@ -597,7 +601,7 @@ export function calculateConsolidatedPayerFinancials(
         });
       }
     } else {
-      const entry = resolveEntryKey(paidBy, m.name, m.supplier);
+      const entry = resolveEntryKey(primaryPayer, m.name, m.supplier);
       if (entry) {
         entry.totalDisbursed += totalAmount;
         entry.materialsTotal += totalAmount;
@@ -620,7 +624,9 @@ export function calculateConsolidatedPayerFinancials(
 
   // 6. GST Invoices Tax Paid
   gstRecords.forEach(g => {
-    const paidBy = (g as any).paidBy;
+    const primaryPayer = g.paidBy || (g as any).payerId;
+    const partnerRef = g.partnerPhone || (g as any).partnerName || (g as any).partnerId;
+
     if (g.type === 'paid') {
       const totalPaid = (Number(g.amount) || 0) + (Number(g.gstAmount) || 0);
 
@@ -629,8 +635,8 @@ export function calculateConsolidatedPayerFinancials(
         const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalPaid;
         const primaryAmount = Math.max(0, totalPaid - partnerHelpAmount);
 
-        const partnerEntry = resolvePartnerHelper(g.partnerPhone, g.partyName, g.notes);
-        const disburserEntry = paidBy ? resolveEntryKey(paidBy, g.partyName, g.invoiceNo) : null;
+        const partnerEntry = resolvePartnerHelper(partnerRef, g.partyName, g.notes);
+        const disburserEntry = primaryPayer ? resolveEntryKey(primaryPayer, g.partyName, g.invoiceNo) : resolveEntryKey(undefined, g.partyName, g.invoiceNo);
 
         if (partnerEntry) {
           partnerEntry.totalDisbursed += partnerHelpAmount;
@@ -686,7 +692,7 @@ export function calculateConsolidatedPayerFinancials(
           });
         }
       } else {
-        const entry = resolveEntryKey(paidBy, g.partyName, g.invoiceNo);
+        const entry = resolveEntryKey(primaryPayer, g.partyName, g.invoiceNo);
         if (entry) {
           entry.totalDisbursed += totalPaid;
           entry.gstTotal += totalPaid;
