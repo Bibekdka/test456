@@ -24,7 +24,16 @@ import {
   TrendingUp,
   Coins,
   FileSpreadsheet,
-  Eye
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  CalendarDays,
+  Coffee,
+  Fuel,
+  Sparkles,
+  Layers,
+  CheckCircle2,
+  Clock
 } from 'lucide-react';
 
 interface DailyExpensesTrackerProps {
@@ -40,22 +49,22 @@ interface DailyExpensesTrackerProps {
 
 const SUB_CATEGORIES = {
   labour_expense: [
-    { value: 'tea_snacks', label: 'Tea & Snacks' },
-    { value: 'medical', label: 'Medical / First-Aid' },
-    { value: 'travel', label: 'Travel / Conveyance' },
-    { value: 'tools_safety', label: 'Tools & Safety Gear' },
-    { value: 'emergency_cash', label: 'Emergency Pocket Cash' },
-    { value: 'other', label: 'Other Labour Expense' }
+    { value: 'tea_snacks', label: 'Tea & Snacks', icon: '☕' },
+    { value: 'medical', label: 'Medical / First-Aid', icon: '💊' },
+    { value: 'travel', label: 'Travel / Conveyance', icon: '🚌' },
+    { value: 'tools_safety', label: 'Tools & Safety Gear', icon: '🦺' },
+    { value: 'emergency_cash', label: 'Emergency Pocket Cash', icon: '💵' },
+    { value: 'other', label: 'Other Labour Expense', icon: '📦' }
   ],
   misc_transaction: [
-    { value: 'fuel_power', label: 'Fuel, Oil & Power' },
-    { value: 'stationery', label: 'Stationery & Office' },
-    { value: 'site_cleaning', label: 'Site Cleaning & Waste Disposal' },
-    { value: 'rental', label: 'Machine/Tool Rental' },
-    { value: 'freight_transport', label: 'Freight & Local Carriage' },
-    { value: 'printing', label: 'Printing & Xerox' },
-    { value: 'refreshments', label: 'General Refreshments' },
-    { value: 'other', label: 'Other General Misc' }
+    { value: 'fuel_power', label: 'Fuel, Oil & Power', icon: '⛽' },
+    { value: 'stationery', label: 'Stationery & Office', icon: '📝' },
+    { value: 'site_cleaning', label: 'Site Cleaning & Waste Disposal', icon: '🧹' },
+    { value: 'rental', label: 'Machine/Tool Rental', icon: '⚙️' },
+    { value: 'freight_transport', label: 'Freight & Local Carriage', icon: '🚚' },
+    { value: 'printing', label: 'Printing & Xerox', icon: '🖨️' },
+    { value: 'refreshments', label: 'General Refreshments', icon: '🥤' },
+    { value: 'other', label: 'Other General Misc', icon: '🏷️' }
   ]
 };
 
@@ -69,6 +78,23 @@ export default function DailyExpensesTracker({
   onDeleteDailyExpense,
   onUpdatePayer
 }: DailyExpensesTrackerProps) {
+  // View Mode: 'list' | 'calendar'
+  const [activeViewMode, setActiveViewMode] = useState<'list' | 'calendar'>(() => {
+    const saved = localStorage.getItem('daily_expense_view_mode');
+    return saved === 'calendar' ? 'calendar' : 'list';
+  });
+
+  const handleViewModeChange = (mode: 'list' | 'calendar') => {
+    setActiveViewMode(mode);
+    localStorage.setItem('daily_expense_view_mode', mode);
+  };
+
+  // Calendar Month & Year navigation state
+  const todayObj = new Date();
+  const [calendarYear, setCalendarYear] = useState<number>(todayObj.getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState<number>(todayObj.getMonth()); // 0-11
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string | null>(null);
+
   // Form states
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState<DailyExpense | null>(null);
@@ -343,6 +369,92 @@ export default function DailyExpensesTracker({
     return found ? found.label : val;
   };
 
+  // Map of daily expenses grouped by date (YYYY-MM-DD)
+  const expensesByDateMap = useMemo(() => {
+    const map = new Map<string, DailyExpense[]>();
+    projectExpenses.forEach(exp => {
+      if (!exp.date) return;
+      if (!map.has(exp.date)) {
+        map.set(exp.date, []);
+      }
+      map.get(exp.date)!.push(exp);
+    });
+    return map;
+  }, [projectExpenses]);
+
+  // Calendar month days calculation
+  const calendarDaysInMonth = useMemo(() => {
+    return new Date(calendarYear, calendarMonth + 1, 0).getDate();
+  }, [calendarYear, calendarMonth]);
+
+  const calendarFirstDayOfWeek = useMemo(() => {
+    return new Date(calendarYear, calendarMonth, 1).getDay(); // 0 = Sun
+  }, [calendarYear, calendarMonth]);
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handlePrevCalMonth = () => {
+    if (calendarMonth === 0) {
+      setCalendarMonth(11);
+      setCalendarYear(prev => prev - 1);
+    } else {
+      setCalendarMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextCalMonth = () => {
+    if (calendarMonth === 11) {
+      setCalendarMonth(0);
+      setCalendarYear(prev => prev + 1);
+    } else {
+      setCalendarMonth(prev => prev + 1);
+    }
+  };
+
+  const handleTodayCalMonth = () => {
+    setCalendarMonth(todayObj.getFullYear() ? todayObj.getMonth() : calendarMonth);
+    setCalendarYear(todayObj.getFullYear());
+  };
+
+  const formatCalDateStr = (dayNum: number): string => {
+    const mPadded = String(calendarMonth + 1).padStart(2, '0');
+    const dPadded = String(dayNum).padStart(2, '0');
+    return `${calendarYear}-${mPadded}-${dPadded}`;
+  };
+
+  // Monthly stats for the current calendar view
+  const currentCalMonthKey = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`;
+  const currentCalMonthExpenses = useMemo(() => {
+    return projectExpenses.filter(e => e.date && e.date.startsWith(currentCalMonthKey));
+  }, [projectExpenses, currentCalMonthKey]);
+
+  const calMonthTotalAmount = currentCalMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const calMonthLabourAmount = currentCalMonthExpenses
+    .filter(e => e.category === 'labour_expense')
+    .reduce((sum, e) => sum + e.amount, 0);
+  const calMonthMiscAmount = currentCalMonthExpenses
+    .filter(e => e.category === 'misc_transaction')
+    .reduce((sum, e) => sum + e.amount, 0);
+  const calMonthActiveDays = new Set(currentCalMonthExpenses.map(e => e.date)).size;
+
+  // Open calendar date modal and set date
+  const handleOpenDateModal = (dateStr: string) => {
+    setSelectedCalendarDate(dateStr);
+    setDate(dateStr); // pre-fill entry form date
+  };
+
+  // Preset button action helper
+  const handleApplyPreset = (cat: 'labour_expense' | 'misc_transaction', subVal: string, defaultDesc: string) => {
+    setCategory(cat);
+    setSubCategory(subVal);
+    if (!description.trim()) {
+      setDescription(defaultDesc);
+    }
+  };
+
   // Monthly Daily Expenses Breakdown calculation
   const [showMonthlyExpenseDetails, setShowMonthlyExpenseDetails] = useState(false);
 
@@ -379,7 +491,7 @@ export default function DailyExpensesTracker({
   return (
     <div className="space-y-6 flex-1">
       {/* Upper Title Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             <Coins className="w-6 h-6 text-emerald-600" />
@@ -390,17 +502,254 @@ export default function DailyExpensesTracker({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            if (showForm) handleCancel();
-            else setShowForm(true);
-          }}
-          className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-xs font-semibold shadow-xs cursor-pointer transition"
-        >
-          {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-          {showForm ? 'Close Expense Logger' : 'Log New Expense / Misc Outlay'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View Mode Toggle Segmented Control */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80">
+            <button
+              onClick={() => handleViewModeChange('list')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeViewMode === 'list'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" />
+              <span>📋 Ledger List</span>
+            </button>
+            <button
+              onClick={() => handleViewModeChange('calendar')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeViewMode === 'calendar'
+                  ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5 text-emerald-600" />
+              <span>📅 Calendar View</span>
+            </button>
+          </div>
+
+          <button
+            onClick={() => {
+              if (showForm) handleCancel();
+              else setShowForm(true);
+            }}
+            className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-xs font-semibold shadow-xs cursor-pointer transition"
+          >
+            {showForm ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+            {showForm ? 'Close Expense Logger' : 'Log New Expense / Misc Outlay'}
+          </button>
+        </div>
       </div>
+
+      {/* CALENDAR VIEW SECTION */}
+      {activeViewMode === 'calendar' && (
+        <div className="space-y-5 animate-fade-in">
+          {/* Calendar Month Navigation & Stats Header */}
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-3">
+              {/* Month Navigation Title */}
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                    <span>{monthNames[calendarMonth]} {calendarYear}</span>
+                    <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full">
+                      ₹{calMonthTotalAmount.toLocaleString('en-IN')} Total
+                    </span>
+                  </h3>
+                  <p className="text-slate-400 text-[11px] font-medium">
+                    Tap any date below to view recorded expenses or rapidly add new entries for that day.
+                  </p>
+                </div>
+              </div>
+
+              {/* Month Switcher Controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrevCalMonth}
+                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                  title="Previous Month"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Prev</span>
+                </button>
+
+                <button
+                  onClick={handleTodayCalMonth}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+                >
+                  Today
+                </button>
+
+                <button
+                  onClick={handleNextCalMonth}
+                  className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                  title="Next Month"
+                >
+                  <span className="hidden sm:inline">Next</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+
+                {/* Month Dropdown */}
+                <select
+                  value={calendarMonth}
+                  onChange={(e) => setCalendarMonth(Number(e.target.value))}
+                  className="bg-slate-50 border border-slate-200 text-slate-800 text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                >
+                  {monthNames.map((mName, idx) => (
+                    <option key={mName} value={idx}>{mName}</option>
+                  ))}
+                </select>
+
+                {/* Year Dropdown */}
+                <select
+                  value={calendarYear}
+                  onChange={(e) => setCalendarYear(Number(e.target.value))}
+                  className="bg-slate-50 border border-slate-200 text-slate-800 text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                >
+                  {[calendarYear - 2, calendarYear - 1, calendarYear, calendarYear + 1, calendarYear + 2].map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Month Summary Bar */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-50/80 p-3 rounded-lg border border-slate-200/60 font-mono text-xs">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Month Total Spent</span>
+                <span className="font-extrabold text-slate-900 text-sm">₹{calMonthTotalAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block font-sans">Labour Daily Outlays</span>
+                <span className="font-extrabold text-indigo-700 text-sm">₹{calMonthLabourAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block font-sans">Misc Transactions</span>
+                <span className="font-extrabold text-amber-700 text-sm">₹{calMonthMiscAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-sans">Active Days Logged</span>
+                <span className="font-extrabold text-emerald-700 text-sm font-sans">{calMonthActiveDays} days with expenses</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 7-Column Day Calendar Grid */}
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            {/* Days of Week Header */}
+            <div className="grid grid-cols-7 bg-slate-100 border-b border-slate-200 text-center font-extrabold text-[10px] uppercase tracking-wider text-slate-600 py-2.5">
+              <div className="text-rose-600">Sun</div>
+              <div>Mon</div>
+              <div>Tue</div>
+              <div>Wed</div>
+              <div>Thu</div>
+              <div>Fri</div>
+              <div className="text-indigo-600">Sat</div>
+            </div>
+
+            {/* Calendar Cells Grid */}
+            <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 bg-slate-50/30">
+              {/* Empty leading cells for first day offset */}
+              {Array.from({ length: calendarFirstDayOfWeek }).map((_, i) => (
+                <div key={`offset-${i}`} className="min-h-[110px] sm:min-h-[125px] bg-slate-50/50 p-2 text-slate-300 pointer-events-none" />
+              ))}
+
+              {/* Day Cells */}
+              {Array.from({ length: calendarDaysInMonth }).map((_, i) => {
+                const dayNum = i + 1;
+                const dateStr = formatCalDateStr(dayNum);
+                const dayExpenses = expensesByDateMap.get(dateStr) || [];
+                const dayTotal = dayExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+                const todayStr = todayObj.toISOString().split('T')[0];
+                const isToday = dateStr === todayStr;
+
+                return (
+                  <div
+                    key={dateStr}
+                    onClick={() => handleOpenDateModal(dateStr)}
+                    className={`min-h-[110px] sm:min-h-[130px] p-2 transition cursor-pointer relative group flex flex-col justify-between hover:bg-emerald-50/40 hover:border-emerald-300 ${
+                      isToday 
+                        ? 'bg-emerald-50/50 ring-2 ring-emerald-500 ring-inset font-bold' 
+                        : 'bg-white hover:shadow-xs'
+                    }`}
+                  >
+                    <div>
+                      {/* Cell Header: Day Number & Day Total Badge */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className={`text-xs font-extrabold px-1.5 py-0.5 rounded-md ${
+                          isToday 
+                            ? 'bg-emerald-600 text-white' 
+                            : 'text-slate-800 group-hover:text-emerald-700'
+                        }`}>
+                          {dayNum}
+                        </span>
+
+                        {dayTotal > 0 && (
+                          <span className="text-[10px] font-extrabold font-mono text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-full border border-emerald-200 shadow-2xs">
+                            ₹{dayTotal.toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Expense Item Pills inside Day Cell */}
+                      {dayExpenses.length > 0 ? (
+                        <div className="space-y-1 max-h-[85px] overflow-hidden">
+                          {dayExpenses.slice(0, 3).map((exp) => {
+                            const isLabour = exp.category === 'labour_expense';
+                            const subInfo = SUB_CATEGORIES[exp.category]?.find(s => s.value === exp.subCategory);
+                            const iconStr = subInfo?.icon || (isLabour ? '☕' : '📦');
+
+                            return (
+                              <div
+                                key={exp.id}
+                                className={`text-[9px] p-1 rounded border leading-tight truncate flex items-center justify-between font-medium ${
+                                  isLabour
+                                    ? 'bg-indigo-50/90 text-indigo-900 border-indigo-200'
+                                    : 'bg-amber-50/90 text-amber-900 border-amber-200'
+                                }`}
+                                title={`${exp.description} (₹${exp.amount})`}
+                              >
+                                <span className="truncate pr-1">
+                                  {iconStr} {exp.description || subInfo?.label || exp.subCategory}
+                                </span>
+                                <span className="font-extrabold font-mono text-[9px] whitespace-nowrap">
+                                  ₹{exp.amount}
+                                </span>
+                              </div>
+                            );
+                          })}
+
+                          {dayExpenses.length > 3 && (
+                            <div className="text-[8px] font-bold text-slate-400 text-center uppercase tracking-wider pt-0.5">
+                              +{dayExpenses.length - 3} more...
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-[9px] text-slate-300 italic pt-2 group-hover:text-emerald-600/60 transition">
+                          Tap to add expense
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Plus Icon Hover Trigger */}
+                    <div className="mt-1 flex justify-end opacity-0 group-hover:opacity-100 transition">
+                      <span className="text-[9px] bg-slate-900 text-white font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-2xs">
+                        <Plus className="w-2.5 h-2.5" /> Log
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
@@ -1150,6 +1499,393 @@ export default function DailyExpensesTracker({
           </div>
         )}
       </div>
+
+      {/* Selected Date Inspector & Rapid Entry Modal */}
+      {selectedCalendarDate && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in no-print-overlay">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] flex flex-col border border-slate-200 shadow-2xl overflow-hidden printable-dialog">
+            {/* Modal Header */}
+            <div className="px-5 py-4 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                  <CalendarDays className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm sm:text-base tracking-tight flex items-center gap-2">
+                    <span>Expense & Misc Log: {selectedCalendarDate}</span>
+                  </h3>
+                  <p className="text-slate-300 text-[11px] font-medium">
+                    View or add daily expenses, tea/snacks, fuel, and site outlays for this day.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const dayRecs = expensesByDateMap.get(selectedCalendarDate) || [];
+                  const sumVal = dayRecs.reduce((tot, x) => tot + x.amount, 0);
+                  return (
+                    <span className="text-xs font-mono font-extrabold bg-emerald-500 text-slate-950 px-2.5 py-1 rounded-full shadow-2xs">
+                      ₹{sumVal.toLocaleString('en-IN')} Day Total
+                    </span>
+                  );
+                })()}
+
+                <button
+                  onClick={() => {
+                    setSelectedCalendarDate(null);
+                    setEditingExpense(null);
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="p-5 overflow-y-auto space-y-6 flex-1">
+              {/* SECTION A: Existing Records for Selected Date */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  Recorded Expenses on {selectedCalendarDate}
+                </h4>
+
+                {(() => {
+                  const dayRecs = expensesByDateMap.get(selectedCalendarDate) || [];
+                  if (dayRecs.length === 0) {
+                    return (
+                      <div className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-center space-y-1">
+                        <p className="text-xs font-semibold text-slate-600">No expenses recorded for this date yet</p>
+                        <p className="text-[11px] text-slate-400">
+                          Use the quick entry form below to log tea, snacks, transport, fuel, or misc expenses for this day.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {dayRecs.map((exp) => {
+                        const targetLabour = labours.find(l => l.id === exp.labourId);
+                        const payer = payers.find(p => p.id === exp.payerId);
+                        const isLabour = exp.category === 'labour_expense';
+
+                        return (
+                          <div 
+                            key={exp.id} 
+                            className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs hover:border-slate-300 transition space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold border ${
+                                  isLabour
+                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                    : 'bg-amber-50 border-amber-200 text-amber-700'
+                                }`}>
+                                  {isLabour ? '👷 Labour Outlay' : '📦 Misc Transaction'}
+                                </span>
+                                <span className="font-bold text-xs text-slate-800">
+                                  {getSubCatLabel(exp.category, exp.subCategory)}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-extrabold text-sm text-slate-900 bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200">
+                                  ₹{exp.amount.toLocaleString('en-IN')}
+                                </span>
+
+                                <button
+                                  onClick={() => {
+                                    setEditingExpense(exp);
+                                    setDate(exp.date);
+                                    setCategory(exp.category);
+                                    setSubCategory(exp.subCategory);
+                                    setAmount(exp.amount.toString());
+                                    setDescription(exp.description);
+                                    setSelectedLabourId(exp.labourId || '');
+                                    setSelectedPayerId(exp.payerId || '');
+                                    setIsPartnerHelp(!!exp.isPartnerHelp);
+                                    setPartnerAmount(exp.partnerAmount ? exp.partnerAmount.toString() : '');
+                                    setPartnerPhone(exp.partnerPhone || '');
+                                    setReceiptImage(exp.receiptImage);
+                                    setReceiptImageName(exp.receiptImageName);
+                                  }}
+                                  className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                                  title="Edit Record"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm('Are you sure you want to delete this expense entry?')) {
+                                      onDeleteDailyExpense(exp.id);
+                                    }
+                                  }}
+                                  className="p-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                                  title="Delete Record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-100 font-normal">
+                              {exp.description}
+                            </p>
+
+                            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 pt-1">
+                              <div className="flex items-center gap-3">
+                                {payer && (
+                                  <span className="flex items-center gap-1 font-semibold text-slate-700">
+                                    <User className="w-3 h-3 text-slate-400" /> Disbursed by: {payer.name}
+                                  </span>
+                                )}
+                                {targetLabour && (
+                                  <span className="flex items-center gap-1 font-semibold text-indigo-700">
+                                    <User className="w-3 h-3 text-indigo-400" /> For Worker: {targetLabour.name}
+                                  </span>
+                                )}
+                              </div>
+
+                              {exp.isPartnerHelp && (
+                                <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200">
+                                  🤝 Partner Help: ₹{exp.partnerAmount || 0}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* SECTION B: Quick Form for Entry on Selected Date */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Plus className="w-4 h-4 text-emerald-600" />
+                    {editingExpense ? 'Edit Daily Expense Record' : `Log Expense for ${selectedCalendarDate}`}
+                  </h4>
+                  {editingExpense && (
+                    <button
+                      onClick={handleCancel}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 underline font-semibold"
+                    >
+                      Cancel Edit Mode
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Presets Buttons */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                    ⚡ Quick Presets (Tap to auto-fill):
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('labour_expense', 'tea_snacks', 'Tea & snacks for site workers')}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                    >
+                      ☕ Tea & Snacks
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('misc_transaction', 'fuel_power', 'Fuel / Diesel for machinery generator')}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                    >
+                      ⛽ Fuel & Power
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('misc_transaction', 'freight_transport', 'Local freight / auto carriage charges')}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                    >
+                      🚚 Freight & Carriage
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('labour_expense', 'medical', 'First-aid medical supplies & medicine')}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                    >
+                      💊 Medical Kit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyPreset('misc_transaction', 'site_cleaning', 'Site cleaning & debris disposal')}
+                      className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 border border-slate-200 hover:border-emerald-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1"
+                    >
+                      🧹 Site Cleaning
+                    </button>
+                  </div>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Category Switcher */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategory('labour_expense');
+                        setSubCategory('tea_snacks');
+                      }}
+                      className={`p-2.5 rounded-lg border text-xs font-bold transition text-center cursor-pointer ${
+                        category === 'labour_expense'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      👷 Labour Daily Expense
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategory('misc_transaction');
+                        setSubCategory('fuel_power');
+                      }}
+                      className={`p-2.5 rounded-lg border text-xs font-bold transition text-center cursor-pointer ${
+                        category === 'misc_transaction'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      📦 Misc Site Outlay
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Subcategory */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Expense Sub-category
+                      </label>
+                      <select
+                        value={subCategory}
+                        onChange={(e) => setSubCategory(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        required
+                      >
+                        {SUB_CATEGORIES[category].map((sc) => (
+                          <option key={sc.value} value={sc.value}>
+                            {sc.icon} {sc.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Amount */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Outlay Amount (₹) <span className="text-rose-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <IndianRupee className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="number"
+                          min="1"
+                          step="any"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          placeholder="e.g. 250"
+                          className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Purpose / Details */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Purpose / Description <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="e.g. Tea & samosa for 8 labourers working late shift"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Disbursing Payer */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Paid By / Cashier
+                      </label>
+                      <select
+                        value={selectedPayerId}
+                        onChange={(e) => setSelectedPayerId(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      >
+                        <option value="">-- Cash / Petty Cash --</option>
+                        {payers.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.role || 'Payer'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Linked Labour (if Labour Expense) */}
+                    {category === 'labour_expense' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Target Worker (Optional)
+                        </label>
+                        <select
+                          value={selectedLabourId}
+                          onChange={(e) => setSelectedLabourId(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                        >
+                          <option value="">-- Generic / Whole Group --</option>
+                          {labours.map((l) => (
+                            <option key={l.id} value={l.id}>
+                              {l.name} ({l.role})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="submit"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg px-5 py-2 text-xs font-extrabold cursor-pointer transition shadow-xs flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      {editingExpense ? 'Update Record' : `Save Record for ${selectedCalendarDate}`}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => {
+                  setSelectedCalendarDate(null);
+                  setEditingExpense(null);
+                }}
+                className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-xs font-semibold cursor-pointer transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox / Receipt image Viewer Modal */}
       {viewingReceipt && (
