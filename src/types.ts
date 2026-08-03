@@ -302,6 +302,7 @@ export interface DailyExpense extends BaseEntity {
   description: string;
   labourId?: string; // Reference to a specific labourer if category is 'labour_expense'
   payerId?: string; // Reference to Payer ID or Name who distributed/paid this
+  paidBy?: string; // Name or ID of Payer
   isPartnerHelp?: boolean;
   partnerPhone?: string;
   partnerAmount?: number;
@@ -335,6 +336,8 @@ export interface PettyCashEntry extends BaseEntity {
   receiptImage?: string; // Base64 photo URI
   receiptImageName?: string;
   payerId?: string; // Payer/Partner who disbursed top-up funds
+  payerName?: string;
+  paidBy?: string;
 }
 
 export function parseDateUTC(dateStr: string): Date {

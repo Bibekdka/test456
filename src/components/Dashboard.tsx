@@ -68,6 +68,7 @@ interface DashboardProps {
   onDeletePayer?: (id: string) => Promise<void>;
   onUpdateGstRecord?: (gst: GstRecord) => Promise<void>;
   onDeleteGstRecord?: (id: string) => Promise<void>;
+  onDeletePettyCash?: (id: string) => Promise<void>;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -142,7 +143,8 @@ export default function Dashboard({
   onUpdatePayer,
   onDeletePayer,
   onUpdateGstRecord,
-  onDeleteGstRecord
+  onDeleteGstRecord,
+  onDeletePettyCash
 }: DashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'on_hold'>('all');
@@ -157,7 +159,9 @@ export default function Dashboard({
   
   // Interactive KPI Cards Modal Inspection State
   const [activeModal, setActiveModal] = useState<'budget' | 'expenses' | 'balance' | 'payers' | null>(null);
-  const [expenseModalFilter, setExpenseModalFilter] = useState<'all' | 'daily' | 'materials' | 'food' | 'labour' | 'advances' | 'hotel'>('all');
+  const [expenseModalFilter, setExpenseModalFilter] = useState<
+    'all' | 'daily' | 'misc' | 'materials' | 'food' | 'advances' | 'hotel' | 'pettycash' | 'gst' | 'payments'
+  >('all');
   const [recordsSearchTerm, setRecordsSearchTerm] = useState('');
   const [recordsProjectFilter, setRecordsProjectFilter] = useState<string>('all');
 
@@ -172,6 +176,7 @@ export default function Dashboard({
   const [selectedChartProject, setSelectedChartProject] = useState<string>('all');
   const [chartMinBudget, setChartMinBudget] = useState<string>('');
   const [payerSearch, setPayerSearch] = useState<string>('');
+  const [pieChartScope, setPieChartScope] = useState<string>('active');
 
   // Add/Edit Modals or Forms
   const [showAddForm, setShowAddForm] = useState(false);
@@ -290,11 +295,22 @@ export default function Dashboard({
     const gstClaimed = pGst.filter(g => g.type === 'claimed').reduce((sum, g) => sum + g.gstAmount, 0);
 
     // Daily Expenses and Misc
-    const dailyExpensesCost = (dailyExpenses || [])
-      .filter(e => scopeIds.has(e.projectId))
-      .reduce((sum, e) => sum + e.amount, 0);
+    const pDailyExps = (dailyExpenses || []).filter(e => scopeIds.has(e.projectId));
+    const labourDailyExpenses = pDailyExps
+      .filter(e => e.category === 'labour_expense' || !e.category)
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
-    const totalSpent = labourWages + materialCost + foodCost + dailyExpensesCost;
+    const miscExpensesCost = pDailyExps
+      .filter(e => e.category === 'misc_transaction')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const pettyCashCost = (pettyCashEntries || [])
+      .filter(pc => scopeIds.has(pc.projectId) && pc.type === 'expense')
+      .reduce((sum, pc) => sum + (Number(pc.amount) || 0), 0);
+
+    const dailyExpensesCost = labourDailyExpenses + miscExpensesCost + pettyCashCost;
+
+    const totalSpent = labourWages + materialCost + foodCost + dailyExpensesCost + gstPaid;
     const remainingBudget = project.budget - totalSpent;
 
     // Workers count for this project scope
@@ -306,6 +322,9 @@ export default function Dashboard({
       foodCost,
       gstPaid,
       gstClaimed,
+      labourDailyExpenses,
+      miscExpensesCost,
+      pettyCashCost,
       dailyExpensesCost,
       totalSpent,
       remainingBudget,
@@ -320,6 +339,9 @@ export default function Dashboard({
   let overallFoodCost = 0;
   let overallGstPaid = 0;
   let overallGstClaimed = 0;
+  let overallLabourDailyExpenses = 0;
+  let overallMiscExpenses = 0;
+  let overallPettyCash = 0;
   let overallDailyExpenses = 0;
   let overallSpent = 0;
 
@@ -333,6 +355,9 @@ export default function Dashboard({
     overallFoodCost += metrics.foodCost;
     overallGstPaid += metrics.gstPaid;
     overallGstClaimed += metrics.gstClaimed;
+    overallLabourDailyExpenses += metrics.labourDailyExpenses;
+    overallMiscExpenses += metrics.miscExpensesCost;
+    overallPettyCash += metrics.pettyCashCost;
     overallDailyExpenses += metrics.dailyExpensesCost;
     overallSpent += metrics.totalSpent;
   });
@@ -896,12 +921,83 @@ export default function Dashboard({
     aggregatedCategories[3].Actual += item.categories[3].Actual;
   });
 
-  const categoryPieData = [
-    { name: 'Labour Payroll', value: overallLabourWages, color: '#6366f1' },
-    { name: 'Materials', value: overallMaterialCost, color: '#0284c7' },
-    { name: 'Food & Catering', value: overallFoodCost, color: '#e11d48' },
-    { name: 'Daily Expenses', value: overallDailyExpenses, color: '#d97706' },
-  ].filter(d => d.value > 0);
+  // Active Project or Selected Scope for Expenditure Pie Chart
+  const activeProjectObj = useMemo(() => {
+    return projects.find(p => p.id === activeProjectId) || projects[0] || null;
+  }, [projects, activeProjectId]);
+
+  const targetPieProject = useMemo(() => {
+    if (pieChartScope === 'all') return null;
+    if (pieChartScope === 'active') return activeProjectObj;
+    return projects.find(p => p.id === pieChartScope) || activeProjectObj;
+  }, [pieChartScope, activeProjectObj, projects]);
+
+  const activeProjectPieData = useMemo(() => {
+    let scopeIds: Set<string>;
+    if (!targetPieProject) {
+      scopeIds = new Set(projects.map(p => p.id));
+    } else {
+      scopeIds = new Set(getProjectScopeIds(targetPieProject.id, projects));
+    }
+
+    // Labour wages
+    let labourWages = 0;
+    attendanceRecords.filter(a => scopeIds.has(a.projectId)).forEach((att) => {
+      const labour = labours.find(l => l.id === att.labourId);
+      const perDayWage = att.dailyWage ?? labour?.perDayWage ?? 0;
+      if (att.status === 'present') {
+        labourWages += perDayWage;
+      } else if (att.status === 'half_day') {
+        labourWages += perDayWage / 2;
+      }
+    });
+
+    // Material cost
+    const materialCost = materials.filter(m => scopeIds.has(m.projectId)).reduce((sum, m) => sum + (Number(m.cost) || 0), 0);
+
+    // Food cost
+    const pHotelAdvances = (hotelAdvances || []).filter(h => scopeIds.has(h.projectId));
+    const hotelCost = pHotelAdvances.reduce((sum, h) => sum + (Number(h.amount) || 0), 0);
+    const pFoodLogs = foodLogs.filter(f => scopeIds.has(f.projectId));
+    const foodCost = pFoodLogs.reduce((sum, f) => sum + ((Number(f.mealsCount) || 0) * (Number(f.cost) || 0)), 0) + hotelCost;
+
+    // Daily Site Expenses (category: labour_expense or default)
+    const labourDailyExp = (dailyExpenses || [])
+      .filter(e => scopeIds.has(e.projectId) && (e.category === 'labour_expense' || !e.category))
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // Misc Transactions & Utilities (category: misc_transaction)
+    const miscExp = (dailyExpenses || [])
+      .filter(e => scopeIds.has(e.projectId) && e.category === 'misc_transaction')
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // Petty Cash Expenses
+    const pettyCashCost = (pettyCashEntries || [])
+      .filter(pc => scopeIds.has(pc.projectId) && pc.type === 'expense')
+      .reduce((sum, pc) => sum + (Number(pc.amount) || 0), 0);
+
+    // GST Paid
+    const gstPaid = (gstRecords || [])
+      .filter(g => scopeIds.has(g.projectId) && g.type === 'paid')
+      .reduce((sum, g) => sum + (Number(g.gstAmount) || 0), 0);
+
+    return [
+      { name: 'Labour Payroll', value: labourWages, color: '#6366f1' },
+      { name: 'Materials', value: materialCost, color: '#0284c7' },
+      { name: 'Food & Catering', value: foodCost, color: '#e11d48' },
+      { name: 'Daily Site Expenses', value: labourDailyExp, color: '#d97706' },
+      { name: 'Misc & Utilities', value: miscExp, color: '#f97316' },
+      { name: 'Petty Cash', value: pettyCashCost, color: '#10b981' },
+      { name: 'GST Paid', value: gstPaid, color: '#8b5cf6' },
+    ].filter(d => d.value > 0);
+  }, [
+    targetPieProject, projects, attendanceRecords, labours, materials, foodLogs, hotelAdvances, 
+    dailyExpenses, pettyCashEntries, gstRecords
+  ]);
+
+  const activeProjectPieTotal = useMemo(() => {
+    return activeProjectPieData.reduce((sum, item) => sum + item.value, 0);
+  }, [activeProjectPieData]);
 
   return (
     <div className="space-y-6">
@@ -1840,40 +1936,68 @@ export default function Dashboard({
 
         {/* Expenditure Distribution Pie Chart (1 col) */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-3 flex flex-col justify-between">
-          <div>
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-2">
-              <PieChartIcon className="w-4 h-4 text-indigo-600" />
-              Expenditure Category Distribution
-            </h3>
-            <p className="text-[10px] text-slate-500 mt-1">
-              Proportion of total funds spent on Labour, Materials, Meals, and Daily Expenses.
-            </p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <PieChartIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Expenses Category Pie</span>
+              </h3>
+
+              <select
+                value={pieChartScope}
+                onChange={(e) => setPieChartScope(e.target.value)}
+                className="bg-slate-50 border border-slate-200 text-[11px] font-bold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-900 text-slate-700 max-w-[160px] truncate shadow-2xs"
+              >
+                <option value="active">
+                  Active Site: {activeProjectObj ? activeProjectObj.name : 'Select Site'}
+                </option>
+                <option value="all">All Sites (Combined)</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>Site: {p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Scope info pill */}
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-[11px]">
+              <span className="text-slate-500 font-medium truncate">
+                {targetPieProject ? `Site: ${targetPieProject.name}` : 'All Sites Combined'}
+              </span>
+              <span className="font-mono font-bold text-indigo-700 shrink-0 ml-1">
+                ₹{activeProjectPieTotal.toLocaleString()}
+              </span>
+            </div>
           </div>
 
           <div className="h-[180px] w-full flex items-center justify-center">
-            {overallSpent === 0 ? (
-              <div className="text-center text-slate-400 text-xs font-mono">
-                No expense records logged yet.
+            {activeProjectPieData.length === 0 ? (
+              <div className="text-center text-slate-400 text-xs font-mono space-y-1">
+                <PieChartIcon className="w-8 h-8 text-slate-300 mx-auto opacity-50" />
+                <p>No expense transactions logged for this site scope yet.</p>
               </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={categoryPieData}
+                    data={activeProjectPieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={45}
+                    innerRadius={42}
                     outerRadius={70}
                     paddingAngle={3}
                     dataKey="value"
+                    nameKey="name"
                   >
-                    {categoryPieData.map((entry, index) => (
+                    {activeProjectPieData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(val: any) => [`₹${Number(val).toLocaleString()}`, 'Spent']}
-                    contentStyle={{ fontSize: '11px', borderRadius: '8px' }}
+                    formatter={(val: any, name: any) => [
+                      `₹${Number(val).toLocaleString()} (${activeProjectPieTotal > 0 ? ((Number(val) / activeProjectPieTotal) * 100).toFixed(1) : 0}%)`,
+                      name
+                    ]}
+                    contentStyle={{ fontSize: '11px', borderRadius: '8px', fontWeight: 'bold' }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -1881,15 +2005,21 @@ export default function Dashboard({
           </div>
 
           <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 text-[10px]">
-            {categoryPieData.map((item, idx) => (
-              <div key={idx} className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                <span className="text-slate-500 truncate">{item.name}:</span>
-                <span className="font-mono font-bold text-slate-800 ml-auto">
-                  {overallSpent > 0 ? Math.round((item.value / overallSpent) * 100) : 0}%
-                </span>
-              </div>
-            ))}
+            {activeProjectPieData.map((item, idx) => {
+              const pct = activeProjectPieTotal > 0 ? Math.round((item.value / activeProjectPieTotal) * 100) : 0;
+              return (
+                <div key={idx} className="flex items-center justify-between gap-1 bg-slate-50/60 p-1.5 rounded-md border border-slate-100">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                    <span className="text-slate-600 font-semibold truncate">{item.name}</span>
+                  </div>
+                  <div className="text-right shrink-0 font-mono">
+                    <span className="font-bold text-slate-900 block">₹{item.value.toLocaleString()}</span>
+                    <span className="text-[9px] text-slate-400 block">{pct}%</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -2291,7 +2421,25 @@ export default function Dashboard({
                     expenseModalFilter === 'daily' ? 'bg-amber-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
                   }`}
                 >
-                  Daily Expenses ({dailyExpenses.length})
+                  Daily Site Expenses ({dailyExpenses.filter(e => e.category === 'labour_expense' || !e.category).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpenseModalFilter('misc')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                    expenseModalFilter === 'misc' ? 'bg-orange-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  Misc & Utilities ({dailyExpenses.filter(e => e.category === 'misc_transaction').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpenseModalFilter('pettycash')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                    expenseModalFilter === 'pettycash' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  Petty Cash ({pettyCashEntries.length})
                 </button>
                 <button
                   type="button"
@@ -2300,7 +2448,7 @@ export default function Dashboard({
                     expenseModalFilter === 'materials' ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
                   }`}
                 >
-                  Material Deliveries ({materials.length})
+                  Materials ({materials.length})
                 </button>
                 <button
                   type="button"
@@ -2328,6 +2476,24 @@ export default function Dashboard({
                   }`}
                 >
                   Hotel Advances ({hotelAdvances.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpenseModalFilter('gst')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                    expenseModalFilter === 'gst' ? 'bg-violet-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  GST Records ({gstRecords.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExpenseModalFilter('payments')}
+                  className={`px-3 py-1.5 rounded-lg font-bold transition cursor-pointer whitespace-nowrap ${
+                    expenseModalFilter === 'payments' ? 'bg-teal-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  Wage Payouts ({paymentRecords.length})
                 </button>
               </div>
 
@@ -2372,7 +2538,7 @@ export default function Dashboard({
                 // Build merged transactions list for inspection
                 let items: Array<{
                   id: string;
-                  type: 'daily' | 'material' | 'food' | 'advance' | 'hotel' | 'payment';
+                  type: 'daily' | 'misc' | 'material' | 'food' | 'advance' | 'hotel' | 'pettycash' | 'gst' | 'payment';
                   date: string;
                   title: string;
                   category?: string;
@@ -2384,19 +2550,61 @@ export default function Dashboard({
                 }> = [];
 
                 if (expenseModalFilter === 'all' || expenseModalFilter === 'daily') {
-                  dailyExpenses.forEach(e => {
-                    const pr = projects.find(p => p.id === e.projectId);
+                  (dailyExpenses || [])
+                    .filter(e => e.category === 'labour_expense' || !e.category)
+                    .forEach(e => {
+                      const pr = projects.find(p => p.id === e.projectId);
+                      const subCatLabel = e.subCategory ? e.subCategory.replace('_', ' ').toUpperCase() : 'SITE EXPENSE';
+                      items.push({
+                        id: e.id,
+                        type: 'daily',
+                        date: e.date,
+                        title: `[${subCatLabel}] ${e.description || 'Daily Expense Outlay'}`,
+                        category: 'Daily Site Expense',
+                        projectName: pr?.name || 'Unknown Site',
+                        projectId: e.projectId,
+                        paidBy: e.paidBy || undefined,
+                        amount: e.amount,
+                        originalObj: e
+                      });
+                    });
+                }
+
+                if (expenseModalFilter === 'all' || expenseModalFilter === 'misc') {
+                  (dailyExpenses || [])
+                    .filter(e => e.category === 'misc_transaction')
+                    .forEach(e => {
+                      const pr = projects.find(p => p.id === e.projectId);
+                      const subCatLabel = e.subCategory ? e.subCategory.replace('_', ' ').toUpperCase() : 'MISC';
+                      items.push({
+                        id: e.id,
+                        type: 'misc',
+                        date: e.date,
+                        title: `[${subCatLabel}] ${e.description || 'Misc Transaction'}`,
+                        category: 'Misc Transaction',
+                        projectName: pr?.name || 'Unknown Site',
+                        projectId: e.projectId,
+                        paidBy: e.paidBy || undefined,
+                        amount: e.amount,
+                        originalObj: e
+                      });
+                    });
+                }
+
+                if (expenseModalFilter === 'all' || expenseModalFilter === 'pettycash') {
+                  (pettyCashEntries || []).forEach(pc => {
+                    const pr = projects.find(p => p.id === pc.projectId);
                     items.push({
-                      id: e.id,
-                      type: 'daily',
-                      date: e.date,
-                      title: e.description || e.category,
-                      category: e.category,
-                      projectName: pr?.name || 'Unknown Site',
-                      projectId: e.projectId,
-                      paidBy: e.payerId || undefined,
-                      amount: e.amount,
-                      originalObj: e
+                      id: pc.id,
+                      type: 'pettycash',
+                      date: pc.date,
+                      title: `Petty Cash (${pc.type.toUpperCase()}): ${pc.description || pc.category || 'Site Petty Float'}`,
+                      category: pc.type === 'expense' ? 'Petty Cash Expense' : 'Petty Cash Top-up',
+                      projectName: pr?.name || 'All Sites / Float',
+                      projectId: pc.projectId,
+                      paidBy: pc.payerName,
+                      amount: pc.amount,
+                      originalObj: pc
                     });
                   });
                 }
@@ -2412,7 +2620,7 @@ export default function Dashboard({
                       category: 'Material Delivery',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: m.projectId,
-                      paidBy: undefined,
+                      paidBy: m.paidBy,
                       amount: m.cost,
                       originalObj: m
                     });
@@ -2428,7 +2636,7 @@ export default function Dashboard({
                       type: 'food',
                       date: f.date,
                       title: `Meal Deduction: ${f.mealsCount} meals x ₹${f.cost} (${lab?.name || f.labourId}) ${f.notes ? `- ${f.notes}` : ''}`,
-                      category: 'Food',
+                      category: 'Meal Deduction',
                       projectName: pr?.name || 'Unknown Site',
                       projectId: f.projectId,
                       paidBy: 'Site Food Expense',
@@ -2471,6 +2679,43 @@ export default function Dashboard({
                       paidBy: h.hotelName,
                       amount: h.amount,
                       originalObj: h
+                    });
+                  });
+                }
+
+                if (expenseModalFilter === 'all' || expenseModalFilter === 'gst') {
+                  (gstRecords || []).forEach(g => {
+                    const pr = projects.find(p => p.id === g.projectId);
+                    items.push({
+                      id: g.id,
+                      type: 'gst',
+                      date: g.date,
+                      title: `GST ${g.type.toUpperCase()}: ${g.partyName} (Invoice: ${g.invoiceNo || 'N/A'}) - Rate: ${g.gstRate}%`,
+                      category: g.type === 'paid' ? 'GST Paid' : 'GST Claimed',
+                      projectName: pr?.name || 'Unknown Site',
+                      projectId: g.projectId,
+                      paidBy: g.paidBy,
+                      amount: g.gstAmount,
+                      originalObj: g
+                    });
+                  });
+                }
+
+                if (expenseModalFilter === 'all' || expenseModalFilter === 'payments') {
+                  (paymentRecords || []).forEach(pay => {
+                    const pr = projects.find(p => p.id === pay.projectId);
+                    const lab = labours.find(l => l.id === pay.labourId);
+                    items.push({
+                      id: pay.id,
+                      type: 'payment',
+                      date: pay.date,
+                      title: `Wage Payout to ${lab?.name || 'Worker'} (${pay.daysWorked} days worked, Base: ₹${pay.baseWages}) ${pay.notes ? `- ${pay.notes}` : ''}`,
+                      category: 'Wage Payout',
+                      projectName: pr?.name || 'Unknown Site',
+                      projectId: pay.projectId,
+                      paidBy: pay.paidBy,
+                      amount: pay.amountPaid,
+                      originalObj: pay
                     });
                   });
                 }
@@ -2531,9 +2776,13 @@ export default function Dashboard({
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                                 item.type === 'daily' ? 'bg-amber-100 text-amber-900' :
+                                item.type === 'misc' ? 'bg-orange-100 text-orange-900' :
+                                item.type === 'pettycash' ? 'bg-emerald-100 text-emerald-900' :
                                 item.type === 'material' ? 'bg-sky-100 text-sky-900' :
                                 item.type === 'food' ? 'bg-rose-100 text-rose-900' :
-                                item.type === 'advance' ? 'bg-purple-100 text-purple-900' : 'bg-indigo-100 text-indigo-900'
+                                item.type === 'advance' ? 'bg-purple-100 text-purple-900' :
+                                item.type === 'hotel' ? 'bg-indigo-100 text-indigo-900' :
+                                item.type === 'gst' ? 'bg-violet-100 text-violet-900' : 'bg-teal-100 text-teal-900'
                               }`}>
                                 {item.category || item.type}
                               </span>
@@ -2569,12 +2818,12 @@ export default function Dashboard({
 
                             <div className="flex items-center gap-1.5 border-l border-slate-200 dark:border-slate-800 pl-2">
                             {/* Edit Action */}
-                            {(item.type === 'daily' || item.type === 'material' || item.type === 'food') && (
+                            {(item.type === 'daily' || item.type === 'misc' || item.type === 'material' || item.type === 'food') && (
                               <button
                                 type="button"
                                 title="Edit this record"
                                 onClick={() => {
-                                  if (item.type === 'daily') setEditingDailyExpense(item.originalObj);
+                                  if (item.type === 'daily' || item.type === 'misc') setEditingDailyExpense(item.originalObj);
                                   if (item.type === 'material') setEditingMaterial(item.originalObj);
                                   if (item.type === 'food') setEditingFoodLog(item.originalObj);
                                 }}
@@ -2590,11 +2839,14 @@ export default function Dashboard({
                               title="Delete record"
                               onClick={async () => {
                                 if (confirm(`Are you sure you want to delete this record (${item.title} - ₹${item.amount.toLocaleString()})?`)) {
-                                  if (item.type === 'daily' && onDeleteDailyExpense) await onDeleteDailyExpense(item.id);
+                                  if ((item.type === 'daily' || item.type === 'misc') && onDeleteDailyExpense) await onDeleteDailyExpense(item.id);
                                   if (item.type === 'material' && onDeleteMaterial) await onDeleteMaterial(item.id);
                                   if (item.type === 'food' && onDeleteFoodLog) await onDeleteFoodLog(item.id);
                                   if (item.type === 'advance' && onDeleteAdvance) await onDeleteAdvance(item.id);
                                   if (item.type === 'hotel' && onDeleteHotelAdvance) await onDeleteHotelAdvance(item.id);
+                                  if (item.type === 'pettycash' && onDeletePettyCash) await onDeletePettyCash(item.id);
+                                  if (item.type === 'gst' && onDeleteGstRecord) await onDeleteGstRecord(item.id);
+                                  if (item.type === 'payment' && onDeletePayment) await onDeletePayment(item.id);
                                 }
                               }}
                               className="p-1.5 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold cursor-pointer transition"

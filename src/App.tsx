@@ -1725,6 +1725,7 @@ export default function App() {
               onDeletePayer={handleDeletePayer}
               onUpdateGstRecord={handleUpdateGstRecord}
               onDeleteGstRecord={handleDeleteGstRecord}
+              onDeletePettyCash={handleDeletePettyCash}
             />
           )}
 
