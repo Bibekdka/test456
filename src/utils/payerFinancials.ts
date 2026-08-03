@@ -191,27 +191,30 @@ export function calculateConsolidatedPayerFinancials(
   const resolvePartnerHelper = (partnerRef?: string, description?: string, notes?: string) => {
     const partnerName = parsePartnerSupportName(`${description || ''} ${notes || ''}`);
     if (partnerName) {
-      const p = resolveEntryKey(partnerName);
+      const p = resolveEntryKey(partnerName, description, notes);
       if (p) return p;
     }
     const rawRef = (partnerRef || '').trim();
     if (rawRef) {
-      const p = resolveEntryKey(rawRef);
+      const p = resolveEntryKey(rawRef, description, notes);
       if (p) return p;
     }
-    return null;
+    return resolveEntryKey(undefined, description, notes);
   };
 
   // 1. Labour Micro Advances
   advanceRecords.forEach(adv => {
     const totalAmount = Number(adv.amount) || 0;
+    const primaryPayer = adv.paidBy || (adv as any).payerId;
+    const partnerRef = adv.partnerPhone || (adv as any).partnerName || (adv as any).partnerId;
+
     if (adv.isPartnerHelp) {
       const partnerVal = Number(adv.partnerAmount);
       const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
       const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-      const partnerEntry = resolvePartnerHelper(adv.partnerPhone, adv.description);
-      const disburserEntry = adv.paidBy ? resolveEntryKey(adv.paidBy, adv.description) : null;
+      const partnerEntry = resolvePartnerHelper(partnerRef, adv.description);
+      const disburserEntry = primaryPayer ? resolveEntryKey(primaryPayer, adv.description) : resolveEntryKey(undefined, adv.description);
 
       if (partnerEntry) {
         partnerEntry.totalDisbursed += partnerHelpAmount;
@@ -277,7 +280,7 @@ export function calculateConsolidatedPayerFinancials(
         });
       }
     } else {
-      const entry = resolveEntryKey(adv.paidBy, adv.description);
+      const entry = resolveEntryKey(primaryPayer, adv.description);
       if (entry) {
         entry.totalDisbursed += totalAmount;
         entry.advancesTotal += totalAmount;
@@ -300,7 +303,7 @@ export function calculateConsolidatedPayerFinancials(
 
   // 2. Wage Settlements
   paymentRecords.forEach(pay => {
-    const paidBy = (pay as any).paidBy;
+    const paidBy = (pay as any).paidBy || (pay as any).payerId;
     const entry = resolveEntryKey(paidBy, pay.notes);
     if (entry) {
       const payAmt = Number(pay.amountPaid) || 0;
@@ -325,13 +328,16 @@ export function calculateConsolidatedPayerFinancials(
   // 3. Daily Operational Expenses
   dailyExpenses.forEach(exp => {
     const totalAmount = Number(exp.amount) || 0;
+    const primaryPayer = exp.payerId || exp.paidBy;
+    const partnerRef = exp.partnerPhone || (exp as any).partnerName || (exp as any).partnerId;
+
     if (exp.isPartnerHelp) {
       const partnerVal = Number(exp.partnerAmount);
       const partnerHelpAmount = (!isNaN(partnerVal) && partnerVal > 0) ? partnerVal : totalAmount;
       const primaryAmount = Math.max(0, totalAmount - partnerHelpAmount);
 
-      const partnerEntry = resolvePartnerHelper(exp.partnerPhone, exp.description);
-      const disburserEntry = exp.payerId ? resolveEntryKey(exp.payerId, exp.description, exp.subCategory) : null;
+      const partnerEntry = resolvePartnerHelper(partnerRef, exp.description, exp.subCategory);
+      const disburserEntry = primaryPayer ? resolveEntryKey(primaryPayer, exp.description, exp.subCategory) : resolveEntryKey(undefined, exp.description, exp.subCategory);
 
       if (partnerEntry) {
         partnerEntry.totalDisbursed += partnerHelpAmount;
@@ -397,7 +403,7 @@ export function calculateConsolidatedPayerFinancials(
         });
       }
     } else {
-      const entry = resolveEntryKey(exp.payerId, exp.description, exp.subCategory);
+      const entry = resolveEntryKey(primaryPayer, exp.description, exp.subCategory);
       if (entry) {
         entry.totalDisbursed += totalAmount;
         entry.expensesTotal += totalAmount;

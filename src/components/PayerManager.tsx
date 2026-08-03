@@ -247,7 +247,8 @@ export default function PayerManager({
         color: PAYER_PIE_COLORS[idx % PAYER_PIE_COLORS.length],
         siteBreakdown,
         categoryBreakdown,
-        recentTransactions: p.filteredTransactions.slice(0, 6)
+        allTransactions: p.filteredTransactions,
+        recentTransactions: p.filteredTransactions
       };
     });
 
@@ -1112,11 +1113,14 @@ export default function PayerManager({
                               )}
 
                               {/* RECENT OUTLAYS LIST */}
-                              {data.recentTransactions && data.recentTransactions.length > 0 && (
+                              {(data.allTransactions || data.recentTransactions) && (data.allTransactions || data.recentTransactions).length > 0 && (
                                 <div className="space-y-1 pt-1.5 border-t border-slate-800">
-                                  <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">Recent Expenditures:</div>
-                                  <div className="space-y-1 max-h-[110px] overflow-y-auto pr-1">
-                                    {data.recentTransactions.slice(0, 4).map((tx: any, i: number) => (
+                                  <div className="flex items-center justify-between text-[9px] font-extrabold uppercase text-slate-400 tracking-wider">
+                                    <span>Expenditure Logs:</span>
+                                    <span className="font-mono text-emerald-400 font-bold">{(data.allTransactions || data.recentTransactions).length} total</span>
+                                  </div>
+                                  <div className="space-y-1 max-h-[160px] overflow-y-auto pr-1">
+                                    {(data.allTransactions || data.recentTransactions).map((tx: any, i: number) => (
                                       <div key={i} className="text-[10px] bg-slate-800/80 p-1.5 rounded-lg border border-slate-700/60 space-y-0.5">
                                         <div className="flex items-center justify-between text-slate-300 font-mono">
                                           <span className="text-[9px] text-slate-400">{tx.date}</span>
@@ -1198,7 +1202,7 @@ export default function PayerManager({
                         <div className="mt-3 pt-2.5 border-t border-indigo-200/60 dark:border-indigo-800/60 space-y-2 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
                           <div className="flex items-center justify-between text-[11px] font-bold text-indigo-900 dark:text-indigo-300">
                             <span>Where {entry.name} Spent Money & How Much:</span>
-                            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{entry.recentTransactions.length} transaction(s)</span>
+                            <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">{(entry.allTransactions || entry.recentTransactions).length} total transaction(s)</span>
                           </div>
 
                           {/* CATEGORY BREAKDOWN TAGS */}
@@ -1215,10 +1219,13 @@ export default function PayerManager({
                           )}
 
                           {/* ITEMIZED TRANSACTIONS SUMMARY */}
-                          {entry.recentTransactions.length > 0 && (
-                            <div className="space-y-1 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 max-h-[140px] overflow-y-auto">
-                              <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-1">Detailed Outlays Log:</div>
-                              {entry.recentTransactions.map((tx, idx) => (
+                          {(entry.allTransactions || entry.recentTransactions).length > 0 && (
+                            <div className="space-y-1 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800 max-h-[220px] overflow-y-auto">
+                              <div className="text-[9px] font-extrabold uppercase text-slate-400 tracking-wider mb-1 flex items-center justify-between">
+                                <span>Detailed Outlays Log ({(entry.allTransactions || entry.recentTransactions).length}):</span>
+                                <span className="text-[8px] text-slate-400 font-mono">Scroll to view all</span>
+                              </div>
+                              {(entry.allTransactions || entry.recentTransactions).map((tx, idx) => (
                                 <div key={idx} className="flex items-center justify-between text-[10px] py-1 border-b border-slate-100 dark:border-slate-800/80 last:border-0 font-medium">
                                   <div className="min-w-0 pr-2">
                                     <div className="text-slate-800 dark:text-slate-200 font-bold truncate">{tx.description}</div>
