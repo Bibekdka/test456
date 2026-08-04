@@ -8,6 +8,7 @@ import {
   Check, 
   X, 
   User, 
+  UserX,
   Clock, 
   CalendarDays,
   Grid,
@@ -62,10 +63,10 @@ export default function AttendanceCalendar({
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
-  // Search, Role & Status filters
+  // Search, Role & Status filters (default to 'all' so former personnel are visible by default in summary grid)
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<'active' | 'left' | 'all'>('active');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'left' | 'all'>('all');
 
   // Modal / Popover state for custom day editing
   const [activeDayModal, setActiveDayModal] = useState<{
@@ -74,9 +75,11 @@ export default function AttendanceCalendar({
     existingRecord?: Attendance;
   } | null>(null);
 
-  // Joined Date inline edit state
+  // Joined Date & Left Date inline edit state
   const [isEditingJoinedDate, setIsEditingJoinedDate] = useState(false);
   const [editJoinedDateValue, setEditJoinedDateValue] = useState('');
+  const [isEditingLeftDate, setIsEditingLeftDate] = useState(false);
+  const [editLeftDateValue, setEditLeftDateValue] = useState('');
 
   // Filter labours based on search, role & active/left status
   const filteredLabours = useMemo(() => {
@@ -93,10 +96,29 @@ export default function AttendanceCalendar({
     });
   }, [labours, searchTerm, roleFilter, statusFilter]);
 
+  // Separate active vs left labours so active team is at top and former workers are listed down below
+  const { activeLabours, leftLabours } = useMemo(() => {
+    const active: Labour[] = [];
+    const left: Labour[] = [];
+    filteredLabours.forEach(l => {
+      if (l.status === 'left') {
+        left.push(l);
+      } else {
+        active.push(l);
+      }
+    });
+    return { activeLabours: active, leftLabours: left };
+  }, [filteredLabours]);
+
+  // Combined sorted labours list: active first, left workers down below
+  const sortedLabours = useMemo(() => {
+    return [...activeLabours, ...leftLabours];
+  }, [activeLabours, leftLabours]);
+
   // Selected Labour object
   const selectedLabour = useMemo(() => {
-    return filteredLabours.find(l => l.id === selectedLabourId) || filteredLabours[0] || null;
-  }, [filteredLabours, selectedLabourId]);
+    return sortedLabours.find(l => l.id === selectedLabourId) || sortedLabours[0] || null;
+  }, [sortedLabours, selectedLabourId]);
 
   // Month navigation handlers
   const handlePrevMonth = () => {
@@ -141,10 +163,6 @@ export default function AttendanceCalendar({
 
   // Get attendance record for person and date
   const getAttendanceRecord = (labourId: string, dateStr: string): Attendance | undefined => {
-    const person = labours.find(l => l.id === labourId);
-    if (person && person.joinedDate && dateStr < person.joinedDate) {
-      return undefined;
-    }
     return attendanceRecords.find(
       r => r.labourId === labourId && r.projectId === activeProject.id && r.date === dateStr
     );
@@ -160,12 +178,6 @@ export default function AttendanceCalendar({
   // Quick 1-Click Toggle for a Day:
   // Unmarked (Grey) ➔ Present (Green) ➔ Half Day (Yellow) ➔ Absent (Red) ➔ Unmarked (Grey)
   const handleQuickToggleDay = (labourId: string, dateStr: string) => {
-    const person = labours.find(l => l.id === labourId);
-    if (person && person.joinedDate && dateStr < person.joinedDate) {
-      alert(`Cannot mark attendance for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
-      return;
-    }
-
     if (onSelectDate) {
       onSelectDate(dateStr);
     }
@@ -186,11 +198,6 @@ export default function AttendanceCalendar({
     }
 
     if (nextStatus === 'unmarked') {
-      // Remove record or set to pending
-      const updatedRecords = attendanceRecords.filter(
-        r => !(r.labourId === labourId && r.projectId === activeProject.id && r.date === dateStr)
-      );
-      // We send updated record list to parent
       const recordToSave: Attendance = {
         id: existingRecord ? existingRecord.id : generateId('att'),
         labourId,
@@ -213,12 +220,6 @@ export default function AttendanceCalendar({
 
   // Set specific status
   const handleSetStatus = (labourId: string, dateStr: string, status: AttendanceStatus | 'unmarked') => {
-    const person = labours.find(l => l.id === labourId);
-    if (person && person.joinedDate && dateStr < person.joinedDate) {
-      alert(`Cannot set status for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
-      return;
-    }
-
     if (onSelectDate) {
       onSelectDate(dateStr);
     }
@@ -246,6 +247,17 @@ export default function AttendanceCalendar({
     setIsEditingJoinedDate(false);
   };
 
+  // Save updated Left Date
+  const handleSaveLeftDate = () => {
+    if (!selectedLabour) return;
+    const updated: Labour = {
+      ...selectedLabour,
+      leftDate: editLeftDateValue || undefined
+    };
+    onUpdateLabour(updated);
+    setIsEditingLeftDate(false);
+  };
+
   // Month Name string
   const monthName = new Date(currentYear, currentMonth, 1).toLocaleString('default', { month: 'long' });
 
@@ -264,10 +276,9 @@ export default function AttendanceCalendar({
 
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = formatDateStr(day);
-      if (dateStr < joinDate) continue; // Ignore days before worker joined
-      if (leftDate && dateStr > leftDate) continue; // Ignore days after worker left
+      const isBeforeJoin = dateStr < joinDate;
+      const isAfterLeft = leftDate ? dateStr > leftDate : false;
 
-      validDaysInMonth++;
       const rec = getAttendanceRecord(selectedLabour.id, dateStr);
       const st = getAttendanceStatus(rec);
 
@@ -275,6 +286,10 @@ export default function AttendanceCalendar({
       else if (st === 'half_day') halfDays++;
       else if (st === 'absent') absentDays++;
       else if (st === 'rest' || st === 'home') restDays++;
+
+      if (!isBeforeJoin && !isAfterLeft) {
+        validDaysInMonth++;
+      }
     }
 
     const unmarkedDays = Math.max(0, validDaysInMonth - (presentDays + halfDays + absentDays + restDays));
@@ -461,11 +476,10 @@ export default function AttendanceCalendar({
 
             {/* List of Personnel */}
             <div className="max-h-[380px] overflow-y-auto space-y-1 pr-1 border-t border-slate-100 pt-2">
-              {filteredLabours.map((person) => {
+              {activeLabours.map((person) => {
                 const isSelected = person.id === selectedLabourId;
                 const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
                 const joinDateStr = person.joinedDate || defaultJoin;
-                const isLeft = person.status === 'left';
 
                 return (
                   <button
@@ -473,21 +487,17 @@ export default function AttendanceCalendar({
                     onClick={() => {
                       setSelectedLabourId(person.id);
                       setIsEditingJoinedDate(false);
+                      setIsEditingLeftDate(false);
                     }}
                     className={`w-full text-left p-2.5 rounded-lg border transition flex flex-col gap-1 cursor-pointer ${
                       isSelected
-                        ? isLeft ? 'bg-rose-50 border-rose-300 ring-1 ring-rose-300 text-rose-950' : 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-300 text-emerald-950'
+                        ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-300 text-emerald-950'
                         : 'bg-slate-50/50 hover:bg-slate-100 border-slate-200 text-slate-700'
                     }`}
                   >
                     <div className="flex justify-between items-start gap-1">
                       <span className="font-bold text-xs truncate flex items-center gap-1">
                         {person.name}
-                        {isLeft && (
-                          <span className="bg-rose-100 text-rose-800 text-[8px] font-extrabold px-1 py-0.2 rounded border border-rose-200">
-                            LEFT
-                          </span>
-                        )}
                       </span>
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                         person.role === 'contractor' ? 'bg-purple-100 text-purple-800' :
@@ -508,6 +518,62 @@ export default function AttendanceCalendar({
                   </button>
                 );
               })}
+
+              {leftLabours.length > 0 && (
+                <div className="pt-2">
+                  <div className="text-[10px] font-extrabold text-rose-800 uppercase px-1 py-1 flex items-center gap-1 border-t border-rose-100">
+                    <UserX className="w-3 h-3 text-rose-600" />
+                    <span>Former Personnel / Left ({leftLabours.length})</span>
+                  </div>
+                  <div className="space-y-1 pt-1">
+                    {leftLabours.map((person) => {
+                      const isSelected = person.id === selectedLabourId;
+                      const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
+                      const joinDateStr = person.joinedDate || defaultJoin;
+
+                      return (
+                        <button
+                          key={person.id}
+                          onClick={() => {
+                            setSelectedLabourId(person.id);
+                            setIsEditingJoinedDate(false);
+                            setIsEditingLeftDate(false);
+                          }}
+                          className={`w-full text-left p-2.5 rounded-lg border transition flex flex-col gap-1 cursor-pointer ${
+                            isSelected
+                              ? 'bg-rose-50 border-rose-300 ring-1 ring-rose-300 text-rose-950'
+                              : 'bg-rose-50/30 hover:bg-rose-100/50 border-rose-200/60 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start gap-1">
+                            <span className="font-bold text-xs truncate flex items-center gap-1 text-rose-950">
+                              {person.name}
+                              <span className="bg-rose-100 text-rose-800 text-[8px] font-extrabold px-1 py-0.2 rounded border border-rose-200">
+                                LEFT
+                              </span>
+                            </span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                              person.role === 'contractor' ? 'bg-purple-100 text-purple-800' :
+                              person.role === 'staff' ? 'bg-blue-100 text-blue-800' :
+                              'bg-slate-200 text-slate-700'
+                            }`}>
+                              {person.role || 'worker'}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-rose-400 inline" />
+                              Joined: {joinDateStr}
+                            </span>
+                            <span className="font-semibold text-rose-900">Left: {person.leftDate || 'N/A'}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -515,7 +581,7 @@ export default function AttendanceCalendar({
           <div className="lg:col-span-3 space-y-4">
             {selectedLabour ? (
               <>
-                {/* Person Header Info Card with Prominent DATE JOINED */}
+                {/* Person Header Info Card with Prominent DATE JOINED & LEFT DATE */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -532,8 +598,8 @@ export default function AttendanceCalendar({
                       </span>
                     </div>
 
-                    {/* Date Joined Badge with Edit Support */}
-                    <div className="flex items-center gap-2 pt-1">
+                    {/* Date Joined & Left Badges with Edit Support */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs font-bold">
                         <CalendarIcon className="w-3.5 h-3.5 text-amber-600" />
                         <span>Date Joined:</span>
@@ -580,6 +646,55 @@ export default function AttendanceCalendar({
                           </div>
                         )}
                       </div>
+
+                      {selectedLabour.status === 'left' && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-50 border border-rose-200 text-rose-900 rounded-lg text-xs font-bold">
+                          <UserX className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Date Left:</span>
+                          {!isEditingLeftDate ? (
+                            <span className="font-mono text-rose-950 underline decoration-rose-300">
+                              {selectedLabour.leftDate || 'Not Specified'}
+                            </span>
+                          ) : (
+                            <input
+                              type="date"
+                              value={editLeftDateValue}
+                              onChange={(e) => setEditLeftDateValue(e.target.value)}
+                              className="bg-white border border-rose-300 rounded px-1.5 py-0.5 text-xs text-slate-800 font-mono"
+                            />
+                          )}
+
+                          {!isEditingLeftDate ? (
+                            <button
+                              onClick={() => {
+                                setEditLeftDateValue(selectedLabour.leftDate || new Date().toISOString().split('T')[0]);
+                                setIsEditingLeftDate(true);
+                              }}
+                              className="text-rose-700 hover:text-rose-900 ml-1 cursor-pointer"
+                              title="Edit Left Date"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1 ml-1">
+                              <button
+                                onClick={handleSaveLeftDate}
+                                className="bg-emerald-600 text-white p-1 rounded hover:bg-emerald-700 cursor-pointer"
+                                title="Save Date"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => setIsEditingLeftDate(false)}
+                                className="bg-slate-300 text-slate-700 p-1 rounded hover:bg-slate-400 cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {selectedLabour.contact && selectedLabour.contact !== 'N/A' && (
                         <span className="text-xs text-slate-500 font-mono bg-slate-50 border border-slate-200 px-2 py-1 rounded-lg">
@@ -822,92 +937,134 @@ export default function AttendanceCalendar({
                 </tr>
               </thead>
               <tbody>
-                {filteredLabours.map((person) => {
-                  const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
-                  const joinDate = person.joinedDate || defaultJoin;
+                {(() => {
+                  const renderPersonRow = (person: Labour, isLeftWorker: boolean) => {
+                    const defaultJoin = activeProject.startDate || new Date().toISOString().split('T')[0];
+                    const joinDate = person.joinedDate || defaultJoin;
+                    const leftDate = person.status === 'left' && person.leftDate ? person.leftDate : null;
 
-                  let monthDaysWorked = 0;
+                    let monthDaysWorked = 0;
 
-                  for (let d = 1; d <= daysInMonth; d++) {
-                    const dStr = formatDateStr(d);
-                    if (dStr < joinDate) continue; // Skip pre-join days from monthly stats
-                    const rec = getAttendanceRecord(person.id, dStr);
-                    const st = getAttendanceStatus(rec);
-                    if (st === 'present') monthDaysWorked += 1;
-                    if (st === 'half_day') monthDaysWorked += 0.5;
-                  }
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dStr = formatDateStr(d);
+                      const rec = getAttendanceRecord(person.id, dStr);
+                      const st = getAttendanceStatus(rec);
+                      if (st === 'present') monthDaysWorked += 1;
+                      if (st === 'half_day') monthDaysWorked += 0.5;
+                    }
+
+                    return (
+                      <tr key={person.id} className={`border-b border-slate-100 hover:bg-slate-50/70 transition ${isLeftWorker ? 'bg-rose-50/20' : ''}`}>
+                        {/* Name & Role */}
+                        <td className={`px-3 py-2 font-semibold text-slate-800 sticky left-0 z-10 border-r border-slate-200 shadow-xs ${isLeftWorker ? 'bg-rose-50/90' : 'bg-white'}`}>
+                          <div className="flex flex-col">
+                            <span className="truncate max-w-[140px] font-bold text-slate-900 flex items-center gap-1">
+                              {person.name}
+                              {isLeftWorker && (
+                                <span className="bg-rose-100 text-rose-800 text-[8px] font-extrabold px-1 py-0.2 rounded border border-rose-200">
+                                  LEFT
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[9px] text-slate-500 capitalize">
+                              {person.role || 'worker'} • ₹{person.perDayWage}/d
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Dates Joined & Left */}
+                        <td className="px-3 py-2 font-mono text-[10px] border-r border-slate-200">
+                          <div className="flex flex-col">
+                            <span className="text-amber-900 font-bold">Joined: {joinDate}</span>
+                            {leftDate && (
+                              <span className="text-rose-700 font-bold">Left: {leftDate}</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Days Worked Summary */}
+                        <td className="px-3 py-2 text-center font-mono border-r border-slate-200 text-xs font-bold text-emerald-800 bg-emerald-50/20">
+                          {monthDaysWorked} Days
+                        </td>
+
+                        {/* Daily Cells (1..daysInMonth) */}
+                        {Array.from({ length: daysInMonth }).map((_, idx) => {
+                          const dayNum = idx + 1;
+                          const dateStr = formatDateStr(dayNum);
+                          const isBeforeJoined = dateStr < joinDate;
+                          const isAfterLeft = leftDate ? dateStr > leftDate : false;
+
+                          const rec = getAttendanceRecord(person.id, dateStr);
+                          const status = getAttendanceStatus(rec);
+
+                          return (
+                            <td key={dayNum} className="p-0.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleQuickToggleDay(person.id, dateStr)}
+                                className={`w-6 h-7 rounded border font-mono text-[10px] font-bold flex items-center justify-center transition cursor-pointer ${
+                                  status === 'present'
+                                    ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600 shadow-xs'
+                                    : status === 'half_day'
+                                    ? 'bg-amber-400 text-slate-900 border-amber-500 hover:bg-amber-500 shadow-xs'
+                                    : status === 'absent'
+                                    ? 'bg-rose-500 text-white border-rose-600 hover:bg-rose-600 shadow-xs'
+                                    : status === 'rest'
+                                    ? 'bg-blue-500 text-white border-blue-600'
+                                    : isAfterLeft
+                                    ? 'bg-rose-50 text-rose-700 border-rose-200/80 hover:bg-rose-100'
+                                    : isBeforeJoined
+                                    ? 'bg-slate-100/70 text-slate-400 border-slate-200/80 hover:bg-slate-200/80'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                                }`}
+                                title={`${person.name} - ${dateStr}: ${
+                                  status === 'present' ? 'Full Day (1.0)' :
+                                  status === 'half_day' ? 'Half Day (0.5)' :
+                                  status === 'absent' ? 'Absent (0.0)' :
+                                  isAfterLeft ? 'After Left Date (Click to mark)' :
+                                  isBeforeJoined ? 'Before Join Date (Click to mark)' :
+                                  'Unmarked'
+                                }`}
+                              >
+                                {status === 'present' ? 'P' :
+                                 status === 'half_day' ? 'H' :
+                                 status === 'absent' ? 'A' :
+                                 status === 'rest' ? 'R' :
+                                 isAfterLeft ? 'L' :
+                                 isBeforeJoined ? '-' :
+                                 dayNum}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  };
 
                   return (
-                    <tr key={person.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                      {/* Name & Role */}
-                      <td className="px-3 py-2 font-semibold text-slate-800 sticky left-0 bg-white border-r border-slate-200 z-10 shadow-xs">
-                        <div className="flex flex-col">
-                          <span className="truncate max-w-[130px] font-bold">{person.name}</span>
-                          <span className="text-[9px] text-slate-400 capitalize">{person.role || 'worker'} • ₹{person.perDayWage}/d</span>
-                        </div>
-                      </td>
-
-                      {/* Prominent DATE JOINED */}
-                      <td className="px-3 py-2 font-mono text-[11px] text-amber-900 bg-amber-50/30 border-r border-slate-200">
-                        <span className="font-bold">{joinDate}</span>
-                      </td>
-
-                      {/* Days Worked Summary */}
-                      <td className="px-3 py-2 text-center font-mono border-r border-slate-200 text-xs font-bold text-emerald-800 bg-emerald-50/20">
-                        {monthDaysWorked} Days
-                      </td>
-
-                      {/* Daily Cells (1..31) */}
-                      {Array.from({ length: daysInMonth }).map((_, idx) => {
-                        const dayNum = idx + 1;
-                        const dateStr = formatDateStr(dayNum);
-                        const isBeforeJoined = dateStr < joinDate;
-                        const rec = getAttendanceRecord(person.id, dateStr);
-                        const status = getAttendanceStatus(rec);
-
-                        return (
-                          <td key={dayNum} className="p-0.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (isBeforeJoined) {
-                                  alert(`Cannot mark attendance for ${person.name} on ${dateStr} as they joined on ${person.joinedDate}.`);
-                                  return;
-                                }
-                                handleQuickToggleDay(person.id, dateStr);
-                              }}
-                              className={`w-6 h-7 rounded border font-mono text-[10px] font-bold flex items-center justify-center transition cursor-pointer ${
-                                isBeforeJoined
-                                  ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed opacity-60'
-                                  : status === 'present'
-                                  ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600'
-                                  : status === 'half_day'
-                                  ? 'bg-amber-400 text-slate-900 border-amber-500 hover:bg-amber-500'
-                                  : status === 'absent'
-                                  ? 'bg-rose-500 text-white border-rose-600 hover:bg-rose-600'
-                                  : status === 'rest'
-                                  ? 'bg-blue-500 text-white border-blue-600'
-                                  : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                              }`}
-                              title={
-                                isBeforeJoined
-                                  ? `${person.name} - Pre-join date (Joined: ${joinDate})`
-                                  : `${person.name} - ${dateStr}: ${
-                                      status === 'present' ? 'Full Day (1.0)' :
-                                      status === 'half_day' ? 'Half Day (0.5)' :
-                                      status === 'absent' ? 'Absent (0.0)' :
-                                      'Unmarked'
-                                    }`
-                              }
-                            >
-                              {isBeforeJoined ? '-' : status === 'present' ? 'P' : status === 'half_day' ? 'H' : status === 'absent' ? 'A' : dayNum}
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
+                    <>
+                      {activeLabours.map(p => renderPersonRow(p, false))}
+                      {leftLabours.length > 0 && (
+                        <>
+                          <tr className="bg-rose-100/80 border-y-2 border-rose-200">
+                            <td colSpan={daysInMonth + 3} className="px-3 py-2 font-black text-rose-950 text-xs tracking-wider uppercase bg-rose-100/90">
+                              <div className="flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                  <UserX className="w-4 h-4 text-rose-700 inline" />
+                                  🔴 Former Personnel / Workers Who Have Left ({leftLabours.length})
+                                </span>
+                                <span className="text-[10px] font-normal text-rose-900 lowercase">
+                                  scroll through months to view or click cells to edit attendance
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                          {leftLabours.map(p => renderPersonRow(p, true))}
+                        </>
+                      )}
+                    </>
                   );
-                })}
+                })()}
               </tbody>
             </table>
           </div>
