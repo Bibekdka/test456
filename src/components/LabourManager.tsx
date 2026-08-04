@@ -795,8 +795,8 @@ export default function LabourManager({
                       </div>
                       <div className="flex justify-between font-bold">
                         <span className="text-slate-700">Net Due (Food Deducted):</span>
-                        <span className={`font-mono ${selectedWorkerStats.netBalanceWithFoodAuto < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                          ₹{selectedWorkerStats.netBalanceWithFoodAuto.toFixed(2)}
+                        <span className={`font-mono ${selectedWorkerStats.netBalanceWithFoodManual < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                          ₹{selectedWorkerStats.netBalanceWithFoodManual.toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -1022,7 +1022,7 @@ export default function LabourManager({
                     Worker Wages vs. Food Cost Comparison
                   </h3>
                   <p className="text-slate-400 text-[10px] mt-0.5">
-                    Detailed per-worker highlights comparing gross earnings, food deductions (Auto vs Manual), advances, and net payable wages.
+                    Detailed per-worker highlights comparing gross earnings, food deductions, advances, and net payable wages.
                   </p>
                 </div>
 
@@ -1064,8 +1064,7 @@ export default function LabourManager({
                       <th className="py-2.5 px-3 text-right">Daily Wage</th>
                       <th className="py-2.5 px-3 text-right">Days Worked</th>
                       <th className="py-2.5 px-3 text-right">Gross Wages</th>
-                      <th className="py-2.5 px-3 text-right bg-amber-50/50">Auto Food (₹100/d)</th>
-                      <th className="py-2.5 px-3 text-right bg-amber-50">Manual Meals</th>
+                      <th className="py-2.5 px-3 text-right bg-amber-50">Food / Meals (₹)</th>
                       <th className="py-2.5 px-3 text-right text-rose-700">Advances</th>
                       <th className="py-2.5 px-3 text-right text-indigo-700 font-semibold">Total Paid</th>
                       <th className="py-2.5 px-3 text-right bg-emerald-50 text-emerald-800 font-bold">Net Due (With Food)</th>
@@ -1084,16 +1083,13 @@ export default function LabourManager({
                             <td className="py-2.5 px-3 text-right text-slate-600">₹{l.perDayWage}</td>
                             <td className="py-2.5 px-3 text-right text-slate-600">{stats.daysWorked}d</td>
                             <td className="py-2.5 px-3 text-right text-slate-800 font-semibold">₹{stats.baseWages.toFixed(0)}</td>
-                            <td className="py-2.5 px-3 text-right bg-amber-50/30 text-amber-700" title={`${stats.foodDays} attendance days`}>
-                              ₹{stats.autoFoodCost.toFixed(0)} <span className="text-[9px] text-slate-400">({stats.foodDays}d)</span>
-                            </td>
                             <td className="py-2.5 px-3 text-right bg-amber-50/50 text-amber-700">₹{stats.manualFoodCost.toFixed(0)}</td>
                             <td className="py-2.5 px-3 text-right text-rose-600">₹{stats.totalAdvances.toFixed(0)}</td>
                             <td className="py-2.5 px-3 text-right text-indigo-600">₹{stats.totalPaid.toFixed(0)}</td>
                             <td className={`py-2.5 px-3 text-right font-bold bg-emerald-50/30 ${
-                              stats.netBalanceWithFoodAuto < 0 ? 'text-rose-600' : 'text-emerald-700'
+                              stats.netBalanceWithFoodManual < 0 ? 'text-rose-600' : 'text-emerald-700'
                             }`}>
-                              ₹{stats.netBalanceWithFoodAuto.toFixed(0)}
+                              ₹{stats.netBalanceWithFoodManual.toFixed(0)}
                             </td>
                             <td className={`py-2.5 px-3 text-right font-bold bg-indigo-50/30 ${
                               stats.netBalanceWithoutFood < 0 ? 'text-rose-600' : 'text-indigo-700'

@@ -622,7 +622,6 @@ export default function FoodTracker({
                     <th className="p-2.5">Month</th>
                     <th className="p-2.5 text-right">Hotel Advances Paid (₹)</th>
                     <th className="p-2.5 text-right">Manual Food Logs (₹)</th>
-                    <th className="p-2.5 text-right">Auto Attendance Food (₹)</th>
                     <th className="p-2.5 text-right font-black">Net Food Outlay (₹)</th>
                   </tr>
                 </thead>
@@ -640,9 +639,6 @@ export default function FoodTracker({
                         </td>
                         <td className="p-2.5 text-right text-amber-700">
                           ₹{m.manualCost.toLocaleString('en-IN')} <span className="text-[9px] text-slate-400 font-sans">({m.mealsCount} meals)</span>
-                        </td>
-                        <td className="p-2.5 text-right text-emerald-700">
-                          ₹{m.autoCost.toLocaleString('en-IN')} <span className="text-[9px] text-slate-400 font-sans">({m.attendanceDays} days)</span>
                         </td>
                         <td className="p-2.5 text-right font-black text-slate-900 bg-slate-50/50">
                           ₹{effectiveOutlay.toLocaleString('en-IN')}
